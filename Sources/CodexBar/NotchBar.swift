@@ -123,6 +123,12 @@ enum NotchGeometry {
     }
 }
 
+enum NotchMouseEventPolicy {
+    static func ignoresMouseEvents(pointerLocation: CGPoint, hoverZone: CGRect) -> Bool {
+        !hoverZone.contains(pointerLocation)
+    }
+}
+
 // MARK: - Detail plan
 
 /// Deterministic layout arithmetic for the expanded panel. Both the SwiftUI tree and the AppKit
@@ -365,7 +371,7 @@ final class NotchBarController: NSObject {
         self.panel.isReleasedWhenClosed = false
         self.panel.hidesOnDeactivate = false
         self.panel.canHide = false
-        self.panel.ignoresMouseEvents = false
+        self.panel.ignoresMouseEvents = true
         self.panel.acceptsMouseMovedEvents = true
         self.panel.isExcludedFromWindowsMenu = true
         self.panel.becomesKeyOnlyIfNeeded = true
@@ -539,7 +545,9 @@ final class NotchBarController: NSObject {
     /// rebuilt (and re-measuring the detail plan) per event.
     private func handlePointerActivity() {
         guard self.layout != nil else { return }
-        if self.hoverZone.contains(NSEvent.mouseLocation) {
+        let pointerLocation = NSEvent.mouseLocation
+        self.updatePanelMouseEventPolicy(pointerLocation: pointerLocation)
+        if self.hoverZone.contains(pointerLocation) {
             self.pointerDidEnter()
         } else {
             self.pointerDidExit()
@@ -549,6 +557,7 @@ final class NotchBarController: NSObject {
     /// Recomputes the hit-box: the sleeping grab strip, or the island silhouette plus a forgiveness
     /// margin so a slightly wandering pointer does not slam the panel shut.
     private func refreshHoverZone() {
+        defer { self.updatePanelMouseEventPolicy(pointerLocation: NSEvent.mouseLocation) }
         guard let layout else {
             self.hoverZone = .zero
             return
@@ -565,6 +574,12 @@ final class NotchBarController: NSObject {
             width: width,
             height: height)
             .insetBy(dx: -NotchGeometry.hoverGrace, dy: -NotchGeometry.hoverGrace)
+    }
+
+    private func updatePanelMouseEventPolicy(pointerLocation: CGPoint) {
+        self.panel.ignoresMouseEvents = NotchMouseEventPolicy.ignoresMouseEvents(
+            pointerLocation: pointerLocation,
+            hoverZone: self.hoverZone)
     }
 
     private func pointerDidEnter() {

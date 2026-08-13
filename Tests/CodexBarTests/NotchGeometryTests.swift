@@ -128,6 +128,18 @@ struct NotchGeometryTests {
     }
 
     @Test
+    func `stage window passes clicks through outside the visible island`() {
+        let hoverZone = CGRect(x: 600, y: 700, width: 240, height: 180)
+
+        #expect(!NotchMouseEventPolicy.ignoresMouseEvents(
+            pointerLocation: CGPoint(x: 720, y: 800),
+            hoverZone: hoverZone))
+        #expect(NotchMouseEventPolicy.ignoresMouseEvents(
+            pointerLocation: CGPoint(x: 720, y: 500),
+            hoverZone: hoverZone))
+    }
+
+    @Test
     func `accent ramp escalates from calm to critical as the quota drains`() {
         let calm = NotchPalette.accent(usedFraction: 0.2)
         let warning = NotchPalette.accent(usedFraction: 0.7)
