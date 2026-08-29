@@ -62,6 +62,7 @@ extension SettingsStore {
         _ = self.openAIWebBatterySaverEnabled
         _ = self.providerStorageFootprintsEnabled
         _ = self.agentSessionsEnabled
+        _ = self.agentTaskStatusEnabled
         _ = self.agentSessionLabelStyle
         _ = self.agentSessionsManualHosts
         _ = self.codexUsageDataSource

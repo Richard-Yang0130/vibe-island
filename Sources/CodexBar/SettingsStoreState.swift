@@ -72,6 +72,7 @@ struct SettingsDefaultsState {
     var appLanguageRaw: String?
     var terminalAppRaw: String?
     var agentSessionsEnabled: Bool
+    var agentTaskStatusEnabled: Bool
     var agentSessionLabelStyleRaw: String
     var agentSessionsManualHosts: String
     var preferredCurrencyCode: String

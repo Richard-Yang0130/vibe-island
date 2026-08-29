@@ -86,6 +86,8 @@ struct MenuBarPane: View {
             } header: {
                 Text(L("section_animation"))
             }
+
+            AgentTaskHookSettingsSection(settings: self.settings)
         }
         .formStyle(.grouped)
         .toggleStyle(.switch)

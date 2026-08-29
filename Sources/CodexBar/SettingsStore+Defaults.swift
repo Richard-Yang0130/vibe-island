@@ -980,6 +980,14 @@ extension SettingsStore {
         }
     }
 
+    var agentTaskStatusEnabled: Bool {
+        get { self.defaultsState.agentTaskStatusEnabled }
+        set {
+            self.defaultsState.agentTaskStatusEnabled = newValue
+            self.userDefaults.set(newValue, forKey: "agentTaskStatusEnabled")
+        }
+    }
+
     var agentSessionLabelStyle: AgentSessionLabelStyle {
         get { AgentSessionLabelStyle(rawValue: self.defaultsState.agentSessionLabelStyleRaw) ?? .project }
         set {
