@@ -38,6 +38,7 @@ struct NativeHighlightDeferredMenuRebuild {
 }
 
 @MainActor
+// swiftlint:disable:next type_body_length
 final class StatusItemController: NSObject, NSMenuDelegate, StatusItemControlling {
     // Disable SwiftUI menu cards + menu refresh work in tests to avoid swiftpm-testing-helper crashes.
     static var menuCardRenderingEnabled = !SettingsStore.isRunningTests
@@ -122,6 +123,8 @@ final class StatusItemController: NSObject, NSMenuDelegate, StatusItemControllin
     let store: UsageStore
     let settings: SettingsStore
     let agentSessions: AgentSessionsStore
+    let agentTaskStatus = AgentTaskStatusStore()
+    var agentTaskEventServer: AgentTaskEventSocketServer?
     lazy var menuCardRefreshMonitor = self.makeMenuCardRefreshMonitor()
 
     let account: AccountInfo
@@ -252,6 +255,7 @@ final class StatusItemController: NSObject, NSMenuDelegate, StatusItemControllin
     private var lastObservedUsageBarsShowUsed: Bool
     var lastWidgetDisplaySettingsSignature = ""
     var lastAgentSessionsEnabled: Bool
+    var lastAgentTaskStatusEnabled: Bool
     var lastAgentSessionsManualHosts: String
     var lastAgentSessionsRefreshFrequency: RefreshFrequency
     var lastAdaptiveActivityScanningEnabled: Bool
@@ -405,6 +409,7 @@ final class StatusItemController: NSObject, NSMenuDelegate, StatusItemControllin
         self.lastSwitcherShowsIcons = settings.switcherShowsIcons
         self.lastObservedUsageBarsShowUsed = settings.usageBarsShowUsed
         self.lastAgentSessionsEnabled = settings.agentSessionsEnabled
+        self.lastAgentTaskStatusEnabled = false
         self.lastAgentSessionsManualHosts = settings.agentSessionsManualHosts
         self.lastAgentSessionsRefreshFrequency = settings.refreshFrequency
         self.lastAdaptiveActivityScanningEnabled = settings.adaptiveActivityScanningEnabled
@@ -432,6 +437,7 @@ final class StatusItemController: NSObject, NSMenuDelegate, StatusItemControllin
         self.lastWidgetDisplaySettingsSignature = self.widgetDisplaySettingsSignature()
         self.wireBindings()
         self.wireAgentSessionUpdates()
+        self.wireAgentTaskStatus()
         if !SettingsStore.isRunningTests {
             self.agentSessions.start()
         }
@@ -674,6 +680,7 @@ final class StatusItemController: NSObject, NSMenuDelegate, StatusItemControllin
         guard !self.isReleasedForTesting else { return }
         #endif
         self.synchronizeAgentSessionsForSettingsChange()
+        self.synchronizeAgentTaskStatusForSettingsChange()
         let configChanged = self.settings.configRevision != self.lastConfigRevision
         let orderChanged = self.settings.providerOrder != self.lastProviderOrder
         let localizationChanged = self.menuLocalizationSignature() != self.lastMenuLocalizationSignature
