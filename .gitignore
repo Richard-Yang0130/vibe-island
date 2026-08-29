@@ -35,6 +35,7 @@ debug_*.swift
 .codex/environments/
 .swiftpm-cache/
 .tmp-clang/
+.worktrees/
 __pycache__/
 
 # Debug/analysis docs
