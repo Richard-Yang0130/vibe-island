@@ -5,9 +5,12 @@ import Testing
 struct AgentTaskEventNormalizerTests {
     @Test
     func `claude permission payload keeps identity and drops command text`() throws {
-        let payload = Data(
-            #"{"session_id":"s1","hook_event_name":"PermissionRequest","cwd":"/repo","tool_input":{"command":"private command"}}"#
-                .utf8)
+        let payload = try JSONSerialization.data(withJSONObject: [
+            "session_id": "s1",
+            "hook_event_name": "PermissionRequest",
+            "cwd": "/repo",
+            "tool_input": ["command": "private command"],
+        ])
         let event = try #require(AgentTaskEventNormalizer.normalize(
             AgentTaskWireEnvelope(schemaVersion: 1, provider: .claude, payload: payload),
             receivedAt: Date(timeIntervalSince1970: 200)))
