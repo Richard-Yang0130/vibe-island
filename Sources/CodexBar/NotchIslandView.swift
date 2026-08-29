@@ -182,6 +182,7 @@ struct NotchIslandActions {
     var selectProvider: @MainActor (UsageProvider) -> Void
     var togglePinned: @MainActor () -> Void
     var toggleExpanded: @MainActor () -> Void
+    var openTask: @MainActor () -> Void
     /// Entry-only hover signal; the controller owns exits.
     var hoverEntered: @MainActor () -> Void
 }
@@ -214,7 +215,7 @@ struct NotchIslandView: View {
     }
 
     private var island: some View {
-        let plan = self.state.plan
+        let plan = self.state.taskDetailPlan
         return ZStack(alignment: .top) {
             self.background
             VStack(spacing: 0) {
@@ -223,8 +224,8 @@ struct NotchIslandView: View {
                     .contentShape(Rectangle())
                     .onTapGesture { self.actions.toggleExpanded() }
                 if self.state.phase == .expanded {
-                    NotchDetailView(state: self.state, plan: plan, actions: self.actions)
-                        .frame(height: plan.height)
+                    NotchTaskDetailView(plan: plan, openTask: self.actions.openTask)
+                        .frame(height: NotchTaskDetailView.height)
                         .transition(.opacity)
                 }
             }
@@ -269,6 +270,101 @@ struct NotchIslandView: View {
             }
         }
         .allowsHitTesting(false)
+    }
+}
+
+// MARK: - Task detail
+
+struct NotchTaskDetailView: View {
+    static let height: CGFloat = 208
+
+    let plan: NotchTaskDetailPlan
+    let openTask: @MainActor () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            self.eventHeader
+            self.eventIdentity
+            if self.plan.sections.contains(where: { $0.kind == .openTask }) {
+                Button(action: self.openTask) {
+                    Text(L("agent_task_open"))
+                        .font(.system(size: 12, weight: .semibold))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 32)
+                        .background(.white.opacity(0.11), in: RoundedRectangle(cornerRadius: 10))
+                }
+                .buttonStyle(.plain)
+            }
+            Spacer(minLength: 0)
+            if let quota = self.plan.quota {
+                self.quotaFooter(quota)
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 14)
+        .padding(.bottom, 16)
+    }
+
+    private var eventHeader: some View {
+        HStack(spacing: 8) {
+            RoundedRectangle(cornerRadius: 2.5)
+                .fill(self.providerColor)
+                .frame(width: 8, height: 8)
+                .shadow(color: self.providerColor.opacity(0.7), radius: 4)
+            Text(self.plan.providerName)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.9))
+            Spacer(minLength: 8)
+            Text(self.plan.statusText)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(self.providerColor)
+        }
+    }
+
+    private var eventIdentity: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(self.plan.eventTitle)
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+            if let subtitle = self.plan.eventSubtitle {
+                Text(subtitle)
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(.white.opacity(0.42))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+        }
+    }
+
+    private func quotaFooter(_ quota: NotchQuotaSummary) -> some View {
+        VStack(spacing: 7) {
+            HStack {
+                Text(L("agent_task_quota"))
+                Spacer(minLength: 8)
+                Text("\(Int(quota.usedPercent.rounded()))%")
+                if let resetText = quota.resetText {
+                    Text("· \(resetText)")
+                }
+            }
+            .font(.system(size: 10.5, weight: .medium))
+            .foregroundStyle(.white.opacity(0.42))
+            GeometryReader { geometry in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(.white.opacity(0.08))
+                    Capsule()
+                        .fill(self.providerColor.opacity(0.58))
+                        .frame(width: geometry.size.width * quota.usedPercent / 100)
+                }
+            }
+            .frame(height: 3)
+        }
+    }
+
+    private var providerColor: Color {
+        self.plan.provider == .codex
+            ? NotchPalette.mint
+            : Color(red: 1, green: 0.55, blue: 0.22)
     }
 }
 

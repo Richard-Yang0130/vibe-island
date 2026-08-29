@@ -3,6 +3,53 @@ import Testing
 @testable import CodexBar
 
 struct NotchTaskPresentationTests {
+    @Test
+    @MainActor
+    func `expanded detail puts task before quota`() throws {
+        let task = try #require(AgentTaskAttention(event: .fixture(
+            kind: .turnCompleted,
+            provider: .codex,
+            sessionID: "s1",
+            turnID: "t1",
+            title: "Implement status")))
+        let plan = NotchTaskDetailPlan(
+            attention: task,
+            activeSession: nil,
+            quota: NotchQuotaSummary(usedPercent: 52, resetText: "Resets in 2h"))
+
+        #expect(plan.sections.map(\.kind) == [.event, .openTask, .quota])
+        #expect(plan.eventTitle == "Implement status")
+    }
+
+    @Test
+    func `only finite attention schedules automatic dismissal`() {
+        #expect(NotchAttentionPolicy.dismissAfter(status: .completed) == 5)
+        #expect(NotchAttentionPolicy.dismissAfter(status: .interrupted) == 5)
+        #expect(NotchAttentionPolicy.dismissAfter(status: .needsApproval) == nil)
+        #expect(NotchAttentionPolicy.dismissAfter(status: .failed) == nil)
+    }
+
+    @Test
+    @MainActor
+    func `manual expansion shows current running task before quota`() {
+        let running = AgentTaskSessionState(
+            provider: .claude,
+            sessionID: "s1",
+            turnID: "t1",
+            status: .running,
+            updatedAt: .now,
+            projectPath: "/repo/CodexBar",
+            transcriptPath: nil,
+            taskTitle: nil)
+        let plan = NotchTaskDetailPlan(
+            attention: nil,
+            activeSession: running,
+            quota: NotchQuotaSummary(usedPercent: 34, resetText: "Resets in 3h"))
+
+        #expect(plan.sections.map(\.kind) == [.event, .openTask, .quota])
+        #expect(plan.eventTitle == "CodexBar")
+    }
+
     @Test(arguments: [
         (AgentTaskStatus.idle, NotchLightMotion.staticDim),
         (.running, .breathe),

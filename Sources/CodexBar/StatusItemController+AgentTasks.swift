@@ -22,6 +22,11 @@ extension StatusItemController {
     func wireAgentTaskStatus() {
         self.agentTaskStatus.onChange = { [weak self] in
             self?.notchSurfaces?.refreshAll()
+            if let attention = self?.agentTaskStatus.currentAttention {
+                self?.notchSurfaces?.present(attention)
+            } else {
+                self?.notchSurfaces?.collapseAttention()
+            }
         }
         self.synchronizeAgentTaskStatusForSettingsChange()
     }
@@ -63,6 +68,41 @@ extension StatusItemController {
             promptForAccessibility: false)
     }
 
+    func openDisplayedAgentTask() {
+        if let attention = self.agentTaskStatus.currentAttention {
+            self.openAgentTask(attention)
+            self.agentTaskStatus.dismissCurrentAttention()
+            return
+        }
+        guard let state = self.currentAgentTaskSession(),
+              let session = self.agentSessions.localSessions.first(where: { session in
+                  session.id == state.sessionID
+                      && session.provider == (state.provider == .codex ? .codex : .claude)
+              })
+        else { return }
+        self.agentSessions.focus(session, remoteHost: nil)
+    }
+
+    func currentAgentTaskSession() -> AgentTaskSessionState? {
+        let states = AgentTaskProvider.allCases.flatMap { self.agentTaskStatus.aggregate(for: $0).sessions }
+        let activeStates = states.filter { $0.status != .idle }
+        guard var selected = activeStates.max(by: { lhs, rhs in
+            lhs.status.priority == rhs.status.priority
+                ? lhs.updatedAt < rhs.updatedAt
+                : lhs.status.priority < rhs.status.priority
+        })
+        else { return nil }
+
+        let sessionProvider: AgentSession.Provider = selected.provider == .codex ? .codex : .claude
+        if let live = self.agentSessions.localSessions.first(where: { session in
+            session.id == selected.sessionID
+                && session.provider == sessionProvider
+        }) {
+            selected.taskTitle = live.sessionName ?? live.projectName ?? selected.taskTitle
+        }
+        return selected
+    }
+
     private func startAgentTaskEventServer() {
         guard !SettingsStore.isRunningTests, self.agentTaskEventServer == nil else { return }
         let server = AgentTaskEventSocketServer { [weak self] envelope in
@@ -84,8 +124,5 @@ extension StatusItemController {
         guard AgentTaskEventIntake.receive(envelope, at: receivedAt, into: self.agentTaskStatus) else { return }
         AgentTaskHookHealthCenter.shared.markEventReceived(provider: envelope.provider, at: receivedAt)
         self.notchSurfaces?.refreshAll()
-        if let attention = self.agentTaskStatus.currentAttention {
-            self.notchSurfaces?.present(attention)
-        }
     }
 }

@@ -1074,6 +1074,10 @@ extension StatusItemController {
                     onSelectProvider: { [weak self] provider in
                         self?.selectedMenuProvider = provider
                         self?.notchSurfaces?.refreshAll()
+                    },
+                    onOpenTask: { [weak self] in self?.openDisplayedAgentTask() },
+                    onDismissAttention: { [weak self] in
+                        self?.agentTaskStatus.dismissCurrentAttention()
                     })
             }
         }
@@ -1093,7 +1097,10 @@ extension StatusItemController {
             pill: NotchPillContent(text: nil, icon: nil, isRefreshing: false),
             cardModel: nil,
             taskAggregates: [:],
-            hookHealth: [:])
+            hookHealth: [:],
+            attention: nil,
+            activeSession: nil,
+            hidePersonalInfo: false)
     }
 
     private func notchBarContentSnapshot() -> NotchBarContentSnapshot {
@@ -1115,6 +1122,9 @@ extension StatusItemController {
             }),
             hookHealth: Dictionary(uniqueKeysWithValues: AgentTaskProvider.allCases.map {
                 ($0, AgentTaskHookHealthCenter.shared.health(for: $0))
-            }))
+            }),
+            attention: self.agentTaskStatus.currentAttention,
+            activeSession: self.currentAgentTaskSession(),
+            hidePersonalInfo: self.settings.hidePersonalInfo)
     }
 }

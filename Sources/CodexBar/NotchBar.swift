@@ -24,6 +24,98 @@ struct NotchBarContentSnapshot {
     var cardModel: UsageMenuCardView.Model?
     var taskAggregates: [AgentTaskProvider: AgentTaskProviderAggregate]
     var hookHealth: [AgentTaskProvider: AgentTaskHookHealth]
+    var attention: AgentTaskAttention?
+    var activeSession: AgentTaskSessionState?
+    var hidePersonalInfo: Bool
+}
+
+struct NotchQuotaSummary: Equatable {
+    let usedPercent: Double
+    let resetText: String?
+
+    init(usedPercent: Double, resetText: String?) {
+        self.usedPercent = min(max(usedPercent, 0), 100)
+        self.resetText = resetText
+    }
+
+    init?(card: UsageMenuCardView.Model?) {
+        guard let metric = card?.metrics.first else { return nil }
+        self.init(
+            usedPercent: NotchPalette.usedFraction(for: metric) * 100,
+            resetText: metric.resetText)
+    }
+}
+
+struct NotchTaskDetailPlan {
+    enum SectionKind: Equatable {
+        case event
+        case openTask
+        case quota
+    }
+
+    struct Section: Equatable {
+        let kind: SectionKind
+    }
+
+    let provider: AgentTaskProvider
+    let providerName: String
+    let statusText: String
+    let eventTitle: String
+    let eventSubtitle: String?
+    let quota: NotchQuotaSummary?
+    let sections: [Section]
+
+    init(
+        attention: AgentTaskAttention?,
+        activeSession: AgentTaskSessionState?,
+        quota: NotchQuotaSummary?,
+        hidePersonalInfo: Bool = false)
+    {
+        let event = attention?.event
+        let provider = event?.provider ?? activeSession?.provider ?? .codex
+        let status = attention?.status ?? activeSession?.status ?? .idle
+        let path = event?.projectPath ?? activeSession?.projectPath
+        self.provider = provider
+        self.providerName = provider == .codex ? "Codex" : "Claude"
+        self.statusText = status.displayName
+        self.eventTitle = if hidePersonalInfo {
+            status.displayName
+        } else {
+            event?.taskTitle
+                ?? activeSession?.taskTitle
+                ?? path.map { URL(fileURLWithPath: $0).lastPathComponent }
+                ?? L("agent_task_none")
+        }
+        self.eventSubtitle = hidePersonalInfo ? nil : path
+        self.quota = quota
+        var sections = [Section(kind: .event)]
+        if event != nil || activeSession != nil { sections.append(Section(kind: .openTask)) }
+        if quota != nil { sections.append(Section(kind: .quota)) }
+        self.sections = sections
+    }
+}
+
+enum NotchAttentionPolicy {
+    static func dismissAfter(status: AgentTaskStatus) -> TimeInterval? {
+        switch status {
+        case .completed, .interrupted: 5
+        case .idle, .running, .needsApproval, .failed, .disconnected: nil
+        }
+    }
+}
+
+extension AgentTaskStatus {
+    var displayName: String {
+        switch self {
+        case .idle: L("agent_task_none")
+        case .running: L("agent_task_running")
+        case .needsApproval: L("agent_task_needs_approval")
+        case .completed: L("agent_task_completed")
+        case .failed: L("agent_task_failed")
+        case .interrupted: L("agent_task_interrupted")
+        case .disconnected: L("agent_task_disconnected")
+        }
+    }
 }
 
 // MARK: - Phase
@@ -242,6 +334,9 @@ final class NotchBarState {
     var card: UsageMenuCardView.Model?
     var taskAggregates: [AgentTaskProvider: AgentTaskProviderAggregate] = [:]
     var hookHealth: [AgentTaskProvider: AgentTaskHookHealth] = [:]
+    var attention: AgentTaskAttention?
+    var activeSession: AgentTaskSessionState?
+    var hidePersonalInfo = false
     var notchSize = CGSize(width: 180, height: 32)
     /// Horizontal correction so the island stays centered on the notch even when the host window
     /// had to be clamped to the screen edge.
@@ -285,7 +380,7 @@ extension NotchBarState {
 
     var islandHeight: CGFloat {
         self.phase == .expanded
-            ? self.compactHeight + self.plan.height
+            ? self.compactHeight + NotchTaskDetailView.height
             : self.compactHeight
     }
 
@@ -299,6 +394,14 @@ extension NotchBarState {
             claude: self.taskAggregates[.claude]?.status ?? .idle,
             codexConfigured: self.hookHealth[.codex]?.isConfiguredForTaskStatus == true,
             claudeConfigured: self.hookHealth[.claude]?.isConfiguredForTaskStatus == true)
+    }
+
+    var taskDetailPlan: NotchTaskDetailPlan {
+        NotchTaskDetailPlan(
+            attention: self.attention,
+            activeSession: self.activeSession,
+            quota: NotchQuotaSummary(card: self.card),
+            hidePersonalInfo: self.hidePersonalInfo)
     }
 
     var usedFraction: Double? {
@@ -338,6 +441,8 @@ final class NotchBarController: NSObject {
     private let onRefresh: @MainActor () -> Void
     private let onSettings: @MainActor () -> Void
     private let onSelectProvider: @MainActor (UsageProvider) -> Void
+    private let onOpenTask: @MainActor () -> Void
+    private let onDismissAttention: @MainActor () -> Void
     private let refreshMonitor: MenuCardRefreshMonitor?
     private let state = NotchBarState()
     private let panel: NotchBarPanel
@@ -352,6 +457,8 @@ final class NotchBarController: NSObject {
     private var hoverZone: CGRect = .zero
     private var lastFullscreenCheckAt = Date.distantPast
     private var cachedFullscreen = false
+    private var attentionDismissTask: Task<Void, Never>?
+    private var presentedAttentionID: String?
 
     /// Delay before a hovering pointer promotes the teaser into the full panel.
     private static let dwellInterval: Double = 0.2
@@ -382,7 +489,9 @@ final class NotchBarController: NSObject {
         makeContent: @escaping @MainActor () -> NotchBarContentSnapshot,
         onRefresh: @escaping @MainActor () -> Void,
         onSettings: @escaping @MainActor () -> Void,
-        onSelectProvider: @escaping @MainActor (UsageProvider) -> Void)
+        onSelectProvider: @escaping @MainActor (UsageProvider) -> Void,
+        onOpenTask: @escaping @MainActor () -> Void,
+        onDismissAttention: @escaping @MainActor () -> Void)
     {
         self.displayID = displayID
         self.screen = screen
@@ -392,6 +501,8 @@ final class NotchBarController: NSObject {
         self.onRefresh = onRefresh
         self.onSettings = onSettings
         self.onSelectProvider = onSelectProvider
+        self.onOpenTask = onOpenTask
+        self.onDismissAttention = onDismissAttention
         self.panel = NotchBarPanel(
             contentRect: NSRect(x: 0, y: 0, width: 200, height: 40),
             styleMask: [.borderless, .nonactivatingPanel],
@@ -451,6 +562,11 @@ final class NotchBarController: NSObject {
                 self.setPinned(!self.state.isPinned)
             },
             toggleExpanded: { [weak self] in self?.toggle() },
+            openTask: { [weak self] in
+                guard let self else { return }
+                self.onOpenTask()
+                self.collapseAttention()
+            },
             // Redundant entry signal: AppKit tracking areas still fire when a mouse-moved event is
             // dropped (fast flicks, Space switches). Exits stay owned by the pointer watchdog so a
             // transient SwiftUI hover glitch can never slam the panel shut under the pointer.
@@ -489,6 +605,9 @@ final class NotchBarController: NSObject {
             self.state.card = card
             self.state.taskAggregates = content.taskAggregates
             self.state.hookHealth = content.hookHealth
+            self.state.attention = content.attention
+            self.state.activeSession = content.activeSession
+            self.state.hidePersonalInfo = content.hidePersonalInfo
         }
         // Metric count drives the panel height, so the hit-box moves with the data.
         self.refreshHoverZone()
@@ -498,16 +617,36 @@ final class NotchBarController: NSObject {
         self.refreshPillContent()
     }
 
-    func present(_: AgentTaskAttention) {
+    func present(_ attention: AgentTaskAttention) {
         guard NotchSurfaceVisibilityPolicy.shouldExpand(trigger: .taskAttention, isFullscreen: false) else { return }
+        self.attentionDismissTask?.cancel()
+        self.presentedAttentionID = attention.id
+        self.state.attention = attention
         self.setPinned(true)
         self.openStage()
         self.setPhase(.expanded, animation: NotchMotion.expanding)
+        if let delay = NotchAttentionPolicy.dismissAfter(status: attention.status) {
+            self.attentionDismissTask = Task { [weak self] in
+                try? await Task.sleep(for: .seconds(delay))
+                guard !Task.isCancelled, let self, self.presentedAttentionID == attention.id else { return }
+                self.onDismissAttention()
+                self.collapseAttention()
+            }
+        }
     }
 
     func collapseForExternalAttention() {
+        self.attentionDismissTask?.cancel()
+        self.attentionDismissTask = nil
+        self.presentedAttentionID = nil
         self.setPinned(false)
         self.collapseNow()
+    }
+
+    func collapseAttention() {
+        guard self.presentedAttentionID != nil else { return }
+        self.collapseForExternalAttention()
+        self.state.attention = nil
     }
 
     /// Used by the global hotkey and by clicks on the band.
@@ -554,6 +693,8 @@ final class NotchBarController: NSObject {
     private func openStage() {
         self.settleTask?.cancel()
         self.settleTask = nil
+        self.attentionDismissTask?.cancel()
+        self.attentionDismissTask = nil
         guard let layout, self.panel.frame != layout.stageFrame else { return }
         self.panel.setFrame(layout.stageFrame, display: true)
         self.state.centerOffset = layout.anchorRect.midX - layout.stageFrame.midX

@@ -134,6 +134,10 @@ final class NotchSurfaceCoordinator {
         }
     }
 
+    func collapseAttention() {
+        self.controllers.values.forEach { $0.collapseAttention() }
+    }
+
     func expansionOrigin(pointer: CGPoint = NSEvent.mouseLocation) -> CGPoint? {
         self.targetController(pointer: pointer)?.expansionOriginInScreen
     }
