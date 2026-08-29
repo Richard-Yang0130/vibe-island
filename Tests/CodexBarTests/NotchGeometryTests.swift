@@ -1,5 +1,7 @@
 import AppKit
 import CoreGraphics
+import ObjectiveC.runtime
+import SwiftUI
 import Testing
 @testable import CodexBar
 
@@ -145,6 +147,26 @@ struct NotchGeometryTests {
         let proposed = NSRect(x: 100, y: 800, width: 500, height: 400)
 
         #expect(panel.constrainFrameRect(proposed, to: nil) == proposed)
+    }
+
+    @MainActor
+    @Test
+    func `hosting view does not publish content derived sizing constraints`() {
+        let hosting = NotchIslandHostingView(rootView: EmptyView())
+
+        #expect(hosting.sizingOptions.isEmpty)
+    }
+
+    @MainActor
+    @Test
+    func `hosting view suppresses SwiftUI window layout resizing`() throws {
+        let selector = NSSelectorFromString("windowDidLayout")
+        let inherited = try #require(class_getInstanceMethod(NSHostingView<EmptyView>.self, selector))
+        let specialized = try #require(class_getInstanceMethod(
+            NotchIslandHostingView<EmptyView>.self,
+            selector))
+
+        #expect(method_getImplementation(specialized) != method_getImplementation(inherited))
     }
 
     @Test

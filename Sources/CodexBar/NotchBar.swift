@@ -317,6 +317,20 @@ final class NotchBarPanel: NSPanel {
 /// Lets a single click reach a control even while CodexBar is in the background.
 @MainActor
 final class NotchIslandHostingView<Content: View>: NSHostingView<Content> {
+    required init(rootView: Content) {
+        super.init(rootView: rootView)
+        self.sizingOptions = []
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    /// The panel frame is managed explicitly by NotchBarController. NSHostingView's private
+    /// window-layout hook otherwise tries to resize the window to its measured SwiftUI content.
+    @objc private func windowDidLayout() {}
+
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
         true
     }
