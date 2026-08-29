@@ -25,3 +25,15 @@ codexbar sessions focus <session-id>
 ```
 
 Remote hosts need key-based, non-interactive SSH and either `codexbar` on `PATH` or CodexBar installed in `/Applications`.
+
+## Task Status Island
+
+Task Status is a separate, local-only view of precise Codex and Claude lifecycle events. Configure it from **Settings → Menu Bar → Task status**. CodexBar adds marked user-level hooks for detected local clients and removes only those marked entries when the feature is disabled. Unrelated settings and third-party hooks are preserved.
+
+Every display receives a compact top-center island. The collapsed surface contains no text: the left mint/cyan light is Codex and the right orange light is Claude. Running tasks breathe slowly. Approval, completion, failure, and interruption events expand an event-first card on the display containing the pointer; quota appears only as a secondary footer.
+
+The expanded card can open the matching local task. It does not approve or deny tool use. Approval remains in Codex or Claude, so provider security and confirmation UI remain authoritative.
+
+Hook payloads travel only through a user-scoped local Unix socket. CodexBar normalizes them immediately and retains only local session identity, state, project/transcript path, and timestamps needed for display and focus. Prompt text, commands, tool arguments and output, model replies, and raw hook payloads are not retained or displayed.
+
+Task Status does not monitor remote SSH sessions in this release. The Agent Sessions feature above remains responsible for remote discovery and focus.

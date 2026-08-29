@@ -135,15 +135,15 @@ struct AgentTaskHookSettingsSection: View {
                         }
                     })) {
                 SettingsRowLabel(
-                    "Agent task status",
-                    subtitle: "Show Codex and Claude task activity in the top island.")
+                    L("agent_task_status_title"),
+                    subtitle: L("agent_task_status_subtitle"))
             }
             .disabled(self.model.isWorking)
 
             ForEach(AgentTaskProvider.allCases, id: \.rawValue) { provider in
                 LabeledContent {
                     if case .needsRepair = self.model.health(for: provider) {
-                        Button("Repair") {
+                        Button(L("agent_task_needs_repair")) {
                             self.model.repair(provider)
                         }
                         .disabled(self.model.isWorking)
@@ -156,15 +156,15 @@ struct AgentTaskHookSettingsSection: View {
             }
 
             if !self.model.isEnabled {
-                Button("Configure Task Status") {
+                Button(L("agent_task_configure")) {
                     self.model.configure()
                 }
                 .disabled(self.model.isWorking)
             }
         } header: {
-            Text("Agent task island")
+            Text(L("agent_task_status_title"))
         } footer: {
-            SettingsSectionFooter("Only CodexBar-managed hook entries are added or removed.")
+            SettingsSectionFooter(L("agent_task_privacy"))
         }
         .onAppear {
             self.model.refresh()
@@ -180,11 +180,11 @@ struct AgentTaskHookSettingsSection: View {
 
     private func statusText(_ health: AgentTaskHookHealth) -> String {
         switch health {
-        case .notDetected: "CLI not detected"
-        case .notConfigured: "Not configured"
-        case .installedAwaitingEvent: "Installed, waiting for an event"
-        case let .healthy(lastEventAt): "Healthy · \(lastEventAt.formatted(date: .abbreviated, time: .shortened))"
-        case let .needsRepair(message): "Needs repair · \(message)"
+        case .notDetected, .notConfigured: L("agent_task_not_configured")
+        case .installedAwaitingEvent: L("agent_task_waiting_trust")
+        case let .healthy(lastEventAt):
+            "\(L("agent_task_healthy")) · \(lastEventAt.formatted(date: .abbreviated, time: .shortened))"
+        case let .needsRepair(message): "\(L("agent_task_needs_repair")) · \(message)"
         }
     }
 }
