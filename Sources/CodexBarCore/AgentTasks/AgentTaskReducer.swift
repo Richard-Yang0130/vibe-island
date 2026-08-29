@@ -68,6 +68,18 @@ public struct AgentTaskReducer: Sendable {
         self.sessions[SessionKey(provider: provider, sessionID: sessionID)]
     }
 
+    public mutating func acknowledgeTerminal(provider: AgentTaskProvider, sessionID: String) {
+        let key = SessionKey(provider: provider, sessionID: sessionID)
+        guard var state = self.sessions[key] else { return }
+        switch state.status {
+        case .completed, .failed, .interrupted, .disconnected:
+            state.status = .idle
+            self.sessions[key] = state
+        case .idle, .running, .needsApproval:
+            break
+        }
+    }
+
     public func aggregate(for provider: AgentTaskProvider) -> AgentTaskProviderAggregate {
         let matches = self.sessions.values
             .filter { $0.provider == provider }
