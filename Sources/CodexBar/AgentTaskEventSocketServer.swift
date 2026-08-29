@@ -6,6 +6,31 @@ import Network
 import Darwin
 #endif
 
+struct AgentTaskEnvelopeAccumulator {
+    static let maximumWireBytes = AgentTaskWireEnvelope.maximumPayloadBytes * 2
+
+    private var data = Data()
+    private(set) var shouldContinue = true
+
+    mutating func append(_ chunk: Data?, isComplete: Bool) -> AgentTaskWireEnvelope? {
+        guard self.shouldContinue else { return nil }
+        if let chunk {
+            guard self.data.count + chunk.count <= Self.maximumWireBytes else {
+                self.shouldContinue = false
+                return nil
+            }
+            self.data.append(chunk)
+        }
+        guard isComplete else { return nil }
+        self.shouldContinue = false
+        guard let envelope = try? JSONDecoder().decode(AgentTaskWireEnvelope.self, from: self.data),
+              envelope.schemaVersion == AgentTaskWireEnvelope.currentSchemaVersion,
+              AgentTaskWireEnvelope.acceptsPayload(envelope.payload)
+        else { return nil }
+        return envelope
+    }
+}
+
 final class AgentTaskEventSocketServer: @unchecked Sendable {
     typealias EnvelopeHandler = @MainActor @Sendable (AgentTaskWireEnvelope) -> Void
 
@@ -79,21 +104,32 @@ final class AgentTaskEventSocketServer: @unchecked Sendable {
 
     private func receive(on connection: NWConnection) {
         connection.start(queue: self.queue)
+        self.receive(on: connection, accumulator: AgentTaskEnvelopeAccumulator())
+    }
+
+    private func receive(
+        on connection: NWConnection,
+        accumulator original: AgentTaskEnvelopeAccumulator)
+    {
         connection.receive(
             minimumIncompleteLength: 1,
-            maximumLength: AgentTaskWireEnvelope.maximumPayloadBytes + 1)
-        { [weak self] data, _, _, _ in
-            defer { connection.cancel() }
-            guard let self,
-                  let data,
-                  data.count <= AgentTaskWireEnvelope.maximumPayloadBytes,
-                  let envelope = try? JSONDecoder().decode(AgentTaskWireEnvelope.self, from: data),
-                  envelope.schemaVersion == AgentTaskWireEnvelope.currentSchemaVersion,
-                  AgentTaskWireEnvelope.acceptsPayload(envelope.payload)
-            else { return }
+            maximumLength: 16 * 1024)
+        { [weak self] data, _, isComplete, error in
+            guard let self, error == nil else {
+                connection.cancel()
+                return
+            }
 
-            Task { @MainActor in
-                self.handler(envelope)
+            var accumulator = original
+            if let envelope = accumulator.append(data, isComplete: isComplete) {
+                connection.cancel()
+                Task { @MainActor in
+                    self.handler(envelope)
+                }
+            } else if accumulator.shouldContinue, data?.isEmpty == false {
+                self.receive(on: connection, accumulator: accumulator)
+            } else {
+                connection.cancel()
             }
         }
     }

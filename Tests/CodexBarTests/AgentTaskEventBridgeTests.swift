@@ -65,6 +65,22 @@ struct AgentTaskEventBridgeTests {
         #expect(capture.count == 1)
         #expect(capture.envelope == envelope)
     }
+
+    @Test
+    func `socket accumulator waits for the complete fragmented envelope`() throws {
+        let envelope = AgentTaskWireEnvelope(
+            schemaVersion: AgentTaskWireEnvelope.currentSchemaVersion,
+            provider: .claude,
+            payload: Data(#"{"session_id":"s1","hook_event_name":"Stop"}"#.utf8))
+        let encoded = try JSONEncoder().encode(envelope)
+        let midpoint = encoded.count / 2
+        var accumulator = AgentTaskEnvelopeAccumulator()
+
+        #expect(accumulator.append(Data(encoded[..<midpoint]), isComplete: false) == nil)
+        #expect(accumulator.shouldContinue)
+        #expect(accumulator.append(Data(encoded[midpoint...]), isComplete: true) == envelope)
+        #expect(!accumulator.shouldContinue)
+    }
 }
 
 private actor AgentTaskBridgeDataCapture {
