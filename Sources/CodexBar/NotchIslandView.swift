@@ -33,6 +33,69 @@ enum NotchMotion {
     }
 }
 
+enum NotchLightMotion: Equatable {
+    case off
+    case staticDim
+    case breathe
+    case doublePulse
+    case completionPulse
+    case triplePulse
+    case interruptedPulse
+}
+
+struct NotchLightPresentation: Equatable, Identifiable {
+    let provider: AgentTaskProvider
+    let motion: NotchLightMotion
+
+    var id: AgentTaskProvider {
+        self.provider
+    }
+
+    static func make(
+        provider: AgentTaskProvider,
+        status: AgentTaskStatus,
+        isConfigured: Bool)
+        -> NotchLightPresentation
+    {
+        guard isConfigured else { return NotchLightPresentation(provider: provider, motion: .off) }
+        let motion: NotchLightMotion = switch status {
+        case .idle: .staticDim
+        case .running: .breathe
+        case .needsApproval: .doublePulse
+        case .completed: .completionPulse
+        case .failed: .triplePulse
+        case .interrupted, .disconnected: .interruptedPulse
+        }
+        return NotchLightPresentation(provider: provider, motion: motion)
+    }
+}
+
+struct NotchCollapsedPresentation: Equatable {
+    let lights: [NotchLightPresentation]
+    let visibleText: String
+
+    static func make(
+        codex: AgentTaskStatus,
+        claude: AgentTaskStatus,
+        codexConfigured: Bool = true,
+        claudeConfigured: Bool = true)
+        -> NotchCollapsedPresentation
+    {
+        NotchCollapsedPresentation(
+            lights: [
+                NotchLightPresentation.make(
+                    provider: .codex,
+                    status: codex,
+                    isConfigured: codexConfigured),
+                NotchLightPresentation.make(
+                    provider: .claude,
+                    status: claude,
+                    isConfigured: claudeConfigured),
+            ],
+            visibleText: "")
+    }
+}
+
 // MARK: - Palette
 
 /// Severity-driven accent ramp. The island is pure black so it fuses with the physical notch;
@@ -155,8 +218,8 @@ struct NotchIslandView: View {
         return ZStack(alignment: .top) {
             self.background
             VStack(spacing: 0) {
-                NotchBandView(state: self.state, plan: plan)
-                    .frame(height: self.state.notchSize.height)
+                NotchBandView(state: self.state)
+                    .frame(height: self.state.compactHeight)
                     .contentShape(Rectangle())
                     .onTapGesture { self.actions.toggleExpanded() }
                 if self.state.phase == .expanded {
@@ -185,7 +248,6 @@ struct NotchIslandView: View {
         .onHover { isInside in
             if isInside { self.actions.hoverEntered() }
         }
-        .overlay(alignment: .top) { self.alertPulse }
     }
 
     private var background: some View {
@@ -208,39 +270,6 @@ struct NotchIslandView: View {
         }
         .allowsHitTesting(false)
     }
-
-    /// The only thing the island ever shows while asleep: a breathing sliver under the notch when a
-    /// quota is nearly gone. Everything else stays invisible until the pointer arrives.
-    @ViewBuilder
-    private var alertPulse: some View {
-        if self.state.phase == .dormant, self.state.isCritical {
-            NotchAlertPulse(tint: self.state.accent.end, width: self.state.notchSize.width * 0.46)
-                .offset(y: self.state.notchSize.height + 2)
-        }
-    }
-}
-
-// MARK: - Alert pulse
-
-private struct NotchAlertPulse: View {
-    let tint: Color
-    let width: CGFloat
-    @State private var isLit = false
-
-    var body: some View {
-        Capsule()
-            .fill(self.tint)
-            .frame(width: self.width, height: 3)
-            .shadow(color: self.tint.opacity(0.9), radius: 5)
-            .opacity(self.isLit ? 1 : 0.28)
-            .animation(
-                NotchMotion.reduceMotion
-                    ? nil
-                    : .easeInOut(duration: 1.6).repeatForever(autoreverses: true),
-                value: self.isLit)
-            .onAppear { self.isLit = true }
-            .allowsHitTesting(false)
-    }
 }
 
 // MARK: - Menu-bar band
@@ -249,60 +278,102 @@ private struct NotchAlertPulse: View {
 /// hardware notch, so the wings appear to sprout from either side of the camera housing.
 private struct NotchBandView: View {
     let state: NotchBarState
-    let plan: NotchDetailPlan
 
     var body: some View {
-        HStack(spacing: 0) {
-            // Wings only exist once the island wakes: keeps a spinner from animating behind an
-            // invisible layer while the notch is asleep.
-            if self.state.phase != .dormant {
-                self.leadingWing
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                Color.clear
-                    .frame(width: self.state.notchSize.width)
-                self.trailingWing
-                    .frame(maxWidth: .infinity, alignment: .trailing)
+        NotchProviderLightsView(presentation: self.state.collapsedPresentation)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+    }
+}
+
+private struct NotchProviderLightsView: View {
+    let presentation: NotchCollapsedPresentation
+
+    var body: some View {
+        HStack(spacing: 7) {
+            ForEach(self.presentation.lights) { light in
+                NotchProviderLight(presentation: light)
+                    .id("\(light.provider.rawValue)-\(String(describing: light.motion))")
             }
+        }
+        .frame(height: NotchGeometry.lightShelfHeight)
+    }
+}
+
+private struct NotchProviderLight: View {
+    let presentation: NotchLightPresentation
+    @State private var startedAt = Date()
+
+    var body: some View {
+        TimelineView(.animation(
+            minimumInterval: 1 / 30,
+            paused: NotchMotion.reduceMotion || !self.isAnimated))
+        { context in
+            let appearance = self.appearance(at: context.date.timeIntervalSince(self.startedAt))
+            RoundedRectangle(cornerRadius: 3, style: .continuous)
+                .fill(self.color)
+                .frame(width: 8, height: 8)
+                .scaleEffect(appearance.scale)
+                .opacity(appearance.opacity)
+                .shadow(color: self.color.opacity(appearance.glow), radius: 4)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(self.accessibilityLabel)
+    }
+
+    private var color: Color {
+        switch self.presentation.provider {
+        case .codex: NotchPalette.mint
+        case .claude: Color(red: 1, green: 0.55, blue: 0.22)
         }
     }
 
-    private var leadingWing: some View {
-        HStack(spacing: 7) {
-            if let icon = self.state.pill?.icon ?? ProviderBrandIcon.image(for: self.state.selectedProvider) {
-                Image(nsImage: icon)
-                    .renderingMode(.template)
-                    .resizable()
-                    .frame(width: 14, height: 14)
-                    .foregroundStyle(.white.opacity(0.92))
-            }
-            Text(self.plan.headline)
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.92))
-                .lineLimit(1)
-                .truncationMode(.tail)
+    private var isAnimated: Bool {
+        switch self.presentation.motion {
+        case .off, .staticDim: false
+        case .breathe, .doublePulse, .completionPulse, .triplePulse, .interruptedPulse: true
         }
-        .padding(.leading, 14)
     }
 
-    private var trailingWing: some View {
-        HStack(spacing: 7) {
-            if self.state.pill?.isRefreshing == true {
-                ProgressView()
-                    .controlSize(.mini)
-                    .tint(.white.opacity(0.7))
-                    .scaleEffect(0.8)
-            }
-            Text(self.state.bandValueText)
-                .font(.system(size: 12.5, weight: .semibold, design: .rounded))
-                .foregroundStyle(self.state.accent.end)
-                .lineLimit(1)
-                .contentTransition(.numericText())
-            Image(systemName: self.state.phase == .expanded ? "chevron.up" : "chevron.down")
-                .font(.system(size: 8, weight: .bold))
-                .foregroundStyle(.white.opacity(0.4))
+    private var accessibilityLabel: String {
+        "\(self.presentation.provider.rawValue) \(String(describing: self.presentation.motion))"
+    }
+
+    private func appearance(at elapsed: TimeInterval) -> (opacity: Double, scale: Double, glow: Double) {
+        if NotchMotion.reduceMotion {
+            return self.presentation.motion == .off ? (0.08, 1, 0) : (0.72, 1, 0.25)
         }
-        .padding(.trailing, 14)
-        .fixedSize()
+        switch self.presentation.motion {
+        case .off:
+            return (0.08, 1, 0)
+        case .staticDim:
+            return (0.32, 1, 0.08)
+        case .breathe:
+            let wave = (sin(elapsed / 2.4 * .pi * 2 - .pi / 2) + 1) / 2
+            return (0.30 + wave * 0.68, 0.88 + wave * 0.12, 0.15 + wave * 0.65)
+        case .doublePulse:
+            return self.pulseAppearance(elapsed: elapsed, period: 1.35, beats: [0, 0.22])
+        case .completionPulse:
+            guard elapsed < 0.7 else { return (0.42, 1, 0.12) }
+            return self.pulseAppearance(elapsed: elapsed, period: 10, beats: [0.08], width: 0.28)
+        case .triplePulse:
+            return self.pulseAppearance(elapsed: elapsed, period: 1.45, beats: [0, 0.20, 0.40])
+        case .interruptedPulse:
+            return self.pulseAppearance(elapsed: elapsed, period: 1.8, beats: [0, 0.34], width: 0.18)
+        }
+    }
+
+    private func pulseAppearance(
+        elapsed: TimeInterval,
+        period: TimeInterval,
+        beats: [TimeInterval],
+        width: TimeInterval = 0.14)
+        -> (opacity: Double, scale: Double, glow: Double)
+    {
+        let position = elapsed.truncatingRemainder(dividingBy: period)
+        let strength = beats.map { beat in
+            max(0, 1 - abs(position - beat) / width)
+        }.max() ?? 0
+        return (0.26 + strength * 0.74, 0.88 + strength * 0.18, 0.1 + strength * 0.85)
     }
 }
 

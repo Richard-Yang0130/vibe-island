@@ -98,6 +98,15 @@ enum AgentTaskHookHealth: Equatable {
     case needsRepair(String)
 }
 
+extension AgentTaskHookHealth {
+    var isConfiguredForTaskStatus: Bool {
+        switch self {
+        case .installedAwaitingEvent, .healthy: true
+        case .notDetected, .notConfigured, .needsRepair: false
+        }
+    }
+}
+
 @MainActor
 @Observable
 final class AgentTaskHookHealthCenter {

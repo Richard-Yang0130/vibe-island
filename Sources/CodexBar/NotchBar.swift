@@ -22,6 +22,8 @@ struct NotchBarContentSnapshot {
     var enabledProviders: [UsageProvider]
     var pill: NotchPillContent
     var cardModel: UsageMenuCardView.Model?
+    var taskAggregates: [AgentTaskProvider: AgentTaskProviderAggregate]
+    var hookHealth: [AgentTaskProvider: AgentTaskHookHealth]
 }
 
 // MARK: - Phase
@@ -60,6 +62,7 @@ enum NotchGeometry {
     /// Extra pointer-catching width/height around the sleeping notch.
     static let dormantSideGrab: CGFloat = 20
     static let dormantBottomGrab: CGFloat = 8
+    static let lightShelfHeight: CGFloat = 8
     static let simulatedAnchorSize = CGSize(width: 84, height: 20)
     static let simulatedTopGap: CGFloat = 6
     /// Forgiveness margin so a slightly wandering pointer does not collapse the panel.
@@ -237,6 +240,8 @@ final class NotchBarState {
     var selectedProvider: UsageProvider = .codex
     var enabledProviders: [UsageProvider] = []
     var card: UsageMenuCardView.Model?
+    var taskAggregates: [AgentTaskProvider: AgentTaskProviderAggregate] = [:]
+    var hookHealth: [AgentTaskProvider: AgentTaskHookHealth] = [:]
     var notchSize = CGSize(width: 180, height: 32)
     /// Horizontal correction so the island stays centered on the notch even when the host window
     /// had to be clamped to the screen edge.
@@ -280,8 +285,20 @@ extension NotchBarState {
 
     var islandHeight: CGFloat {
         self.phase == .expanded
-            ? self.notchSize.height + self.plan.height
-            : self.notchSize.height
+            ? self.compactHeight + self.plan.height
+            : self.compactHeight
+    }
+
+    var compactHeight: CGFloat {
+        self.notchSize.height + NotchGeometry.lightShelfHeight
+    }
+
+    var collapsedPresentation: NotchCollapsedPresentation {
+        NotchCollapsedPresentation.make(
+            codex: self.taskAggregates[.codex]?.status ?? .idle,
+            claude: self.taskAggregates[.claude]?.status ?? .idle,
+            codexConfigured: self.hookHealth[.codex]?.isConfiguredForTaskStatus == true,
+            claudeConfigured: self.hookHealth[.claude]?.isConfiguredForTaskStatus == true)
     }
 
     var usedFraction: Double? {
@@ -470,6 +487,8 @@ final class NotchBarController: NSObject {
             self.state.enabledProviders = content.enabledProviders
             self.state.pill = content.pill
             self.state.card = card
+            self.state.taskAggregates = content.taskAggregates
+            self.state.hookHealth = content.hookHealth
         }
         // Metric count drives the panel height, so the hit-box moves with the data.
         self.refreshHoverZone()

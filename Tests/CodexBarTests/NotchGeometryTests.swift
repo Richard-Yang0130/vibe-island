@@ -93,12 +93,12 @@ struct NotchGeometryTests {
 
         state.phase = .dormant
         #expect(state.totalWidth == 156)
-        #expect(state.islandHeight == 32)
+        #expect(state.islandHeight == 40)
         #expect(state.shoulderRadius == 0)
 
         state.phase = .peek
         #expect(state.totalWidth > 156)
-        #expect(state.islandHeight == 32)
+        #expect(state.islandHeight == 40)
         #expect(state.shoulderRadius == NotchGeometry.shoulderRadius)
 
         state.phase = .expanded

@@ -1091,7 +1091,9 @@ extension StatusItemController {
             selectedProvider: .codex,
             enabledProviders: [],
             pill: NotchPillContent(text: nil, icon: nil, isRefreshing: false),
-            cardModel: nil)
+            cardModel: nil,
+            taskAggregates: [:],
+            hookHealth: [:])
     }
 
     private func notchBarContentSnapshot() -> NotchBarContentSnapshot {
@@ -1107,6 +1109,12 @@ extension StatusItemController {
                 text: text,
                 icon: ProviderBrandIcon.image(for: provider),
                 isRefreshing: isRefreshing),
-            cardModel: self.menuCardModel(for: provider))
+            cardModel: self.menuCardModel(for: provider),
+            taskAggregates: Dictionary(uniqueKeysWithValues: AgentTaskProvider.allCases.map {
+                ($0, self.agentTaskStatus.aggregate(for: $0))
+            }),
+            hookHealth: Dictionary(uniqueKeysWithValues: AgentTaskProvider.allCases.map {
+                ($0, AgentTaskHookHealthCenter.shared.health(for: $0))
+            }))
     }
 }
