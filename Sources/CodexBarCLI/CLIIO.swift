@@ -25,6 +25,8 @@ extension CodexBarCLI {
     static func printHelp(for command: String?) -> Never {
         let version = self.currentVersion() ?? "unknown"
         switch command {
+        case "agent-event":
+            print(Self.agentEventHelp(version: version))
         case "cards":
             print(Self.cardsHelp(version: version))
         case "usage":

@@ -47,6 +47,8 @@ enum CodexBarCLI {
                 await self.runSessions(invocation.parsedValues)
             case ["sessions", "focus"]:
                 await self.runSessionsFocus(invocation.parsedValues)
+            case ["agent-event"]:
+                await self.runAgentEvent(invocation.parsedValues)
             case ["serve"]:
                 await self.runServe(invocation.parsedValues)
             case let path where path.first == "config":
@@ -247,6 +249,11 @@ enum CodexBarCLI {
                 abstract: "Run provider diagnostic and emit safe JSON export",
                 discussion: nil,
                 signature: diagnoseSignature),
+            CommandDescriptor(
+                name: "agent-event",
+                abstract: "Forward an internal agent hook event",
+                discussion: nil,
+                signature: CommandSignature.describe(AgentEventOptions())),
         ]
     }
 

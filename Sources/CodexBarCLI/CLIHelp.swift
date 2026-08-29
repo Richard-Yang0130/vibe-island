@@ -2,6 +2,18 @@ import CodexBarCore
 import Foundation
 
 extension CodexBarCLI {
+    static func agentEventHelp(version: String) -> String {
+        """
+        CodexBar \(version)
+
+        Usage:
+          codexbar agent-event --provider <codex|claude> --managed-by <owner-marker>
+
+        Description:
+          Internal fail-open bridge for managed local agent hooks.
+        """
+    }
+
     static func cardsHelp(version: String) -> String {
         """
         CodexBar \(version)
