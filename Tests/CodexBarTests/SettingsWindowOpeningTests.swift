@@ -18,6 +18,7 @@ struct SettingsWindowOpeningTests {
         #expect(keepaliveShell.styleMask == [.borderless])
         #expect(keepaliveShell.alphaValue == 0)
         #expect(keepaliveShell.frame.size == NSSize(width: 1, height: 1))
+        #expect(!keepaliveShell.isAccessibilityElement())
 
         let settingsWindow = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 640, height: 480),

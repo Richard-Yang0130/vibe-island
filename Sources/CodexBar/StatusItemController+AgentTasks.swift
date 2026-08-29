@@ -21,7 +21,7 @@ enum AgentTaskEventIntake {
 extension StatusItemController {
     func wireAgentTaskStatus() {
         self.agentTaskStatus.onChange = { [weak self] in
-            self?.notchBar?.refreshPillContent()
+            self?.notchSurfaces?.refreshAll()
         }
         self.synchronizeAgentTaskStatusForSettingsChange()
     }
@@ -83,6 +83,9 @@ extension StatusItemController {
         let receivedAt = Date()
         guard AgentTaskEventIntake.receive(envelope, at: receivedAt, into: self.agentTaskStatus) else { return }
         AgentTaskHookHealthCenter.shared.markEventReceived(provider: envelope.provider, at: receivedAt)
-        self.notchBar?.refreshPillContent()
+        self.notchSurfaces?.refreshAll()
+        if let attention = self.agentTaskStatus.currentAttention {
+            self.notchSurfaces?.present(attention)
+        }
     }
 }

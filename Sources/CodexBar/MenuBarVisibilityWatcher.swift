@@ -253,6 +253,7 @@ extension StatusItemController {
     }
 
     private func checkStartupStatusItemVisibility(appLaunchedAt: Date, now: Date = Date()) {
+        guard !self.notchDisplayActive else { return }
         let evidence = self.startupStatusItemVisibilityEvidence()
         let snapshots = evidence.map(\.snapshot)
         let windowSnapshots = self.statusItemWindowSnapshots()
@@ -309,6 +310,7 @@ extension StatusItemController {
     }
 
     @objc func handleScreenParametersDidChange(_: Notification) {
+        self.updateActiveState()
         let previousScreenCount = max(
             self.pendingScreenChangePreviousCount ?? self.lastKnownScreenCount,
             self.lastKnownScreenCount)
@@ -339,6 +341,10 @@ extension StatusItemController {
     }
 
     private func checkScreenChangeStatusItemVisibility(previousScreenCount: Int, currentScreenCount: Int) {
+        guard !self.notchDisplayActive else {
+            self.pendingScreenChangePreviousCount = nil
+            return
+        }
         self.pendingScreenChangePreviousCount = nil
         let settledCurrentScreenCount = NSScreen.screens.count
         self.lastKnownScreenCount = settledCurrentScreenCount

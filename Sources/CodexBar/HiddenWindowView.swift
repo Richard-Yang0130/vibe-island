@@ -114,6 +114,7 @@ final class KeepaliveWindowConfiguratorView: NSView {
         window.backgroundColor = .clear
         window.hasShadow = false
         window.ignoresMouseEvents = true
+        window.setAccessibilityElement(false)
         window.canHide = false
         window.setContentSize(NSSize(width: 1, height: 1))
         window.setFrameOrigin(NSPoint(x: -5000, y: -5000))

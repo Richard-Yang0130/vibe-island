@@ -56,9 +56,11 @@ final class AgentTaskHookSettingsModel {
                 self.refresh()
                 return
             }
-            self.settings.agentTaskStatusEnabled = true
             for provider in self.detectedProviders {
                 self.install(provider)
+            }
+            self.settings.agentTaskStatusEnabled = self.detectedProviders.contains { provider in
+                self.installer.inspect(provider).document == .installed
             }
         }
     }
@@ -79,8 +81,8 @@ final class AgentTaskHookSettingsModel {
 
     func repair(_ provider: AgentTaskProvider) {
         self.performChange {
-            self.settings.agentTaskStatusEnabled = true
             self.install(provider)
+            self.settings.agentTaskStatusEnabled = self.installer.inspect(provider).document == .installed
         }
     }
 

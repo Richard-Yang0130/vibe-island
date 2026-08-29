@@ -553,6 +553,11 @@ extension StatusItemController: StatusItemMenuPersistentActionDelegate {
             return
         }
 
+        if self.notchDisplayActive {
+            self.notchSurfaces?.toggle()
+            return
+        }
+
         if self.shouldMergeIcons {
             self.statusItem.button?.performClick(nil)
             return
@@ -577,6 +582,10 @@ extension StatusItemController: StatusItemMenuPersistentActionDelegate {
     }
 
     func celebrationOriginPoint(for provider: UsageProvider?) -> CGPoint? {
+        if self.notchDisplayActive, let origin = self.notchSurfaces?.expansionOrigin() {
+            return origin
+        }
+
         let item: NSStatusItem = if self.shouldMergeIcons {
             self.statusItem
         } else if let provider, let existing = self.statusItems[provider], existing.isVisible {

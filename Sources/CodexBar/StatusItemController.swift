@@ -126,6 +126,7 @@ final class StatusItemController: NSObject, NSMenuDelegate, StatusItemControllin
     let agentTaskStatus = AgentTaskStatusStore()
     var agentTaskEventServer: AgentTaskEventSocketServer?
     lazy var menuCardRefreshMonitor = self.makeMenuCardRefreshMonitor()
+    var notchSurfaces: NotchSurfaceCoordinator?
 
     let account: AccountInfo
     let updater: UpdaterProviding
@@ -440,6 +441,7 @@ final class StatusItemController: NSObject, NSMenuDelegate, StatusItemControllin
         self.wireAgentTaskStatus()
         if !SettingsStore.isRunningTests {
             self.agentSessions.start()
+            self.reconcileNotchSurfaces()
         }
         self.updateVisibility()
         self.updateIcons()
@@ -681,6 +683,7 @@ final class StatusItemController: NSObject, NSMenuDelegate, StatusItemControllin
         #endif
         self.synchronizeAgentSessionsForSettingsChange()
         self.synchronizeAgentTaskStatusForSettingsChange()
+        self.reconcileNotchSurfaces()
         let configChanged = self.settings.configRevision != self.lastConfigRevision
         let orderChanged = self.settings.providerOrder != self.lastProviderOrder
         let localizationChanged = self.menuLocalizationSignature() != self.lastMenuLocalizationSignature
@@ -714,6 +717,7 @@ final class StatusItemController: NSObject, NSMenuDelegate, StatusItemControllin
         self.beginIconPerfUpdatePass()
         defer {
             self.endIconPerfUpdatePass()
+            self.notchSurfaces?.refreshAll()
             MainThreadActivityBreadcrumb.pop()
         }
         // Avoid flicker: when an animation driver is active, store updates can call `updateIcons()` and
@@ -770,6 +774,16 @@ final class StatusItemController: NSObject, NSMenuDelegate, StatusItemControllin
         #if DEBUG
         guard !self.isReleasedForTesting else { return }
         #endif
+        if self.notchDisplayActive {
+            self.statusItem.isVisible = false
+            for provider in Array(self.statusItems.keys) {
+                self.removeProviderStatusItem(for: provider)
+            }
+            self.expectedVisibleStatusItemAutosaveNames = []
+            self.updateAnimationState()
+            self.updateBlinkingState()
+            return
+        }
         let anyEnabled = !self.store.enabledProvidersForDisplay().isEmpty
         let force = self.store.debugForceAnimation
         let mergeIcons = self.shouldMergeIcons
@@ -1019,5 +1033,80 @@ extension StatusItemController {
         }
         self.updateVisibility()
         self.updateIcons()
+    }
+}
+
+// MARK: - Dynamic Island (notch) support
+
+extension StatusItemController {
+    /// True while the Dynamic Island is the active display surface (menu-bar screen is notched).
+    /// When active, classic NSStatusItem icons are hidden in favor of the centered notch pill.
+    var notchDisplayActive: Bool {
+        self.notchSurfaces?.isActive ?? false
+    }
+
+    /// Recomputes notch availability after display changes and re-renders whichever surface is active.
+    func updateActiveState() {
+        self.reconcileNotchSurfaces()
+        self.updateVisibility()
+        self.updateIcons()
+    }
+
+    func reconcileNotchSurfaces() {
+        guard self.shouldShowNotchSurfaces else {
+            self.notchSurfaces?.teardown()
+            self.notchSurfaces = nil
+            return
+        }
+        if self.notchSurfaces == nil {
+            self.notchSurfaces = NotchSurfaceCoordinator { [weak self] displayID, screen, layout in
+                guard let self else { preconditionFailure("StatusItemController released") }
+                return NotchBarController(
+                    displayID: displayID,
+                    screen: screen,
+                    layout: layout,
+                    refreshMonitor: self.menuCardRefreshMonitor,
+                    makeContent: { [weak self] in
+                        self?.notchBarContentSnapshot() ?? Self.emptyNotchBarContentSnapshot
+                    },
+                    onRefresh: { [weak self] in self?.refreshNow() },
+                    onSettings: { [weak self] in self?.showSettingsGeneral() },
+                    onSelectProvider: { [weak self] provider in
+                        self?.selectedMenuProvider = provider
+                        self?.notchSurfaces?.refreshAll()
+                    })
+            }
+        }
+        self.notchSurfaces?.reconcileScreens()
+    }
+
+    private var shouldShowNotchSurfaces: Bool {
+        self.settings.agentTaskStatusEnabled && AgentTaskProvider.allCases.contains { provider in
+            AgentTaskHookInstaller().inspect(provider).document == .installed
+        }
+    }
+
+    private static var emptyNotchBarContentSnapshot: NotchBarContentSnapshot {
+        NotchBarContentSnapshot(
+            selectedProvider: .codex,
+            enabledProviders: [],
+            pill: NotchPillContent(text: nil, icon: nil, isRefreshing: false),
+            cardModel: nil)
+    }
+
+    private func notchBarContentSnapshot() -> NotchBarContentSnapshot {
+        let provider = self.resolvedMenuProvider() ?? .codex
+        let snapshot = self.store.presentationSnapshot(for: provider)
+        let text = self.menuBarDisplayText(for: provider, snapshot: snapshot)
+        let isRefreshing = self.store.isRefreshing
+            || self.store.refreshingProviders.contains(provider)
+        return NotchBarContentSnapshot(
+            selectedProvider: provider,
+            enabledProviders: self.store.enabledProvidersForDisplay(),
+            pill: NotchPillContent(
+                text: text,
+                icon: ProviderBrandIcon.image(for: provider),
+                isRefreshing: isRefreshing),
+            cardModel: self.menuCardModel(for: provider))
     }
 }
