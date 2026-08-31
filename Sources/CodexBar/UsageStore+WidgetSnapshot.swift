@@ -11,7 +11,9 @@ extension UsageStore {
         let previousSnapshot = self.lastQueuedWidgetSnapshot ?? {
             #if DEBUG
             // Snapshot-save overrides must stay isolated from a developer's real app-group data.
-            guard self._test_widgetSnapshotSaveOverride == nil else { return nil }
+            guard !SettingsStore.isRunningTests,
+                  self._test_widgetSnapshotSaveOverride == nil
+            else { return nil }
             #endif
             return WidgetSnapshotStore.load()
         }()
@@ -25,6 +27,10 @@ extension UsageStore {
                 await override(snapshot)
                 return
             }
+
+            #if DEBUG
+            guard !SettingsStore.isRunningTests else { return }
+            #endif
 
             await Task.detached(priority: .utility) {
                 WidgetSnapshotStore.save(snapshot)
