@@ -94,8 +94,8 @@ struct NotchGeometryTests {
         state.notchSize = CGSize(width: 156, height: 28)
 
         state.phase = .compact
-        #expect(state.shellPresentation.totalWidth == 362)
-        #expect(state.shellPresentation.height == 36)
+        #expect(state.shellPresentation.totalWidth == 156)
+        #expect(state.shellPresentation.height == 28)
 
         state.phase = .expanded
         #expect(state.shellPresentation.totalWidth == 406)
@@ -171,10 +171,12 @@ struct NotchGeometryTests {
 
         #expect(!NotchMouseEventPolicy.ignoresMouseEvents(
             pointerLocation: CGPoint(x: 720, y: 800),
-            hoverZone: hoverZone))
+            hoverZone: hoverZone,
+            isFixture: true))
         #expect(NotchMouseEventPolicy.ignoresMouseEvents(
             pointerLocation: CGPoint(x: 720, y: 500),
-            hoverZone: hoverZone))
+            hoverZone: hoverZone,
+            isFixture: true))
     }
 
     @Test

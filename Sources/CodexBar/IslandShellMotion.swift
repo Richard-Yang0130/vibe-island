@@ -61,3 +61,34 @@ enum IslandShellMotion {
             : .timingCurve(0.175, 0.885, 0.32, 1.1, duration: 0.35).delay(0.06)
     }
 }
+
+struct NotchIndicatorMotionProfile: Equatable {
+    let minimumOpacity: Double
+    let maximumOpacity: Double
+    let duration: Double?
+}
+
+enum NotchIndicatorMotion {
+    static func dot(state: NotchIndicatorState, reduceMotion: Bool) -> NotchIndicatorMotionProfile {
+        switch state {
+        case .hidden:
+            NotchIndicatorMotionProfile(minimumOpacity: 0, maximumOpacity: 0, duration: nil)
+        case .idle:
+            NotchIndicatorMotionProfile(minimumOpacity: 0.30, maximumOpacity: 0.30, duration: nil)
+        case .running:
+            if reduceMotion {
+                NotchIndicatorMotionProfile(minimumOpacity: 1, maximumOpacity: 1, duration: nil)
+            } else {
+                NotchIndicatorMotionProfile(minimumOpacity: 0.35, maximumOpacity: 1, duration: 2.4)
+            }
+        case .attention:
+            NotchIndicatorMotionProfile(minimumOpacity: 1, maximumOpacity: 1, duration: nil)
+        }
+    }
+
+    static func edge(reduceMotion: Bool) -> NotchIndicatorMotionProfile {
+        reduceMotion
+            ? NotchIndicatorMotionProfile(minimumOpacity: 1, maximumOpacity: 1, duration: nil)
+            : NotchIndicatorMotionProfile(minimumOpacity: 0.35, maximumOpacity: 1, duration: 1.2)
+    }
+}

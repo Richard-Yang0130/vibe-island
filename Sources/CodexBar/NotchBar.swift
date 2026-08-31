@@ -210,7 +210,12 @@ enum NotchGeometry {
 }
 
 enum NotchMouseEventPolicy {
-    static func ignoresMouseEvents(pointerLocation: CGPoint, hoverZone: CGRect) -> Bool {
+    static func ignoresMouseEvents(
+        pointerLocation: CGPoint,
+        hoverZone: CGRect,
+        isFixture _: Bool = false)
+        -> Bool
+    {
         !hoverZone.contains(pointerLocation)
     }
 }
@@ -346,6 +351,8 @@ final class NotchBarState {
     var activeSession: AgentTaskSessionState?
     var hidePersonalInfo = false
     var notchSize = CGSize(width: 180, height: 32)
+    var hasPhysicalNotch = true
+    var fixtureIndicatorScenario: IslandShellFixtureIndicatorScenario?
     /// Horizontal correction so the island stays centered on the notch even when the host window
     /// had to be clamped to the screen edge.
     var centerOffset: CGFloat = 0
@@ -360,6 +367,7 @@ extension NotchBarState {
         IslandShellPresentation(
             phase: self.phase,
             anchorSize: self.notchSize,
+            hasPhysicalNotch: self.hasPhysicalNotch,
             fixture: .reference)
     }
 
@@ -392,11 +400,15 @@ extension NotchBarState {
     }
 
     var collapsedPresentation: NotchCollapsedPresentation {
-        NotchCollapsedPresentation.make(
-            codex: self.taskAggregates[.codex]?.status ?? .idle,
+        if let fixtureIndicatorScenario {
+            return NotchCollapsedPresentation.fixture(fixtureIndicatorScenario)
+        }
+        return NotchCollapsedPresentation.make(
             claude: self.taskAggregates[.claude]?.status ?? .idle,
+            codex: self.taskAggregates[.codex]?.status ?? .idle,
+            claudeConfigured: self.hookHealth[.claude]?.isConfiguredForTaskStatus == true,
             codexConfigured: self.hookHealth[.codex]?.isConfiguredForTaskStatus == true,
-            claudeConfigured: self.hookHealth[.claude]?.isConfiguredForTaskStatus == true)
+            attention: self.attention)
     }
 
     var taskDetailPlan: NotchTaskDetailPlan {
@@ -508,7 +520,11 @@ final class NotchBarController: NSObject {
         super.init()
         self.configurePanel()
         self.state.notchSize = layout.anchorRect.size
+        self.state.hasPhysicalNotch = layout.hasPhysicalNotch
         self.state.phase = self.launchOptions.phase
+        self.state.fixtureIndicatorScenario = self.launchOptions.isFixture
+            ? self.launchOptions.indicatorScenario
+            : nil
         self.state.reduceMotion = self.launchOptions.reduceMotion
             || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         self.applyPanelFrame()
@@ -588,6 +604,7 @@ final class NotchBarController: NSObject {
         let isNewLayout = self.layout != layout
         self.layout = layout
         self.state.notchSize = layout.anchorRect.size
+        self.state.hasPhysicalNotch = layout.hasPhysicalNotch
         if isNewLayout {
             self.applyPanelFrame()
         }
@@ -699,13 +716,10 @@ final class NotchBarController: NSObject {
     }
 
     private func updatePanelMouseEventPolicy(pointerLocation: CGPoint) {
-        guard !self.launchOptions.isFixture else {
-            self.panel.ignoresMouseEvents = false
-            return
-        }
         self.panel.ignoresMouseEvents = NotchMouseEventPolicy.ignoresMouseEvents(
             pointerLocation: pointerLocation,
-            hoverZone: self.hoverZone)
+            hoverZone: self.hoverZone,
+            isFixture: self.launchOptions.isFixture)
     }
 
     private func pointerDidEnter() {

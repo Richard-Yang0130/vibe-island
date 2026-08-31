@@ -85,21 +85,38 @@ enum IslandShellMetrics {
 struct IslandShellPresentation: Equatable {
     let phase: IslandShellPhase
     let anchorSize: CGSize
+    let hasPhysicalNotch: Bool
     let fixture: IslandShellFixture
+
+    init(
+        phase: IslandShellPhase,
+        anchorSize: CGSize,
+        hasPhysicalNotch: Bool = true,
+        fixture: IslandShellFixture)
+    {
+        self.phase = phase
+        self.anchorSize = anchorSize
+        self.hasPhysicalNotch = hasPhysicalNotch
+        self.fixture = fixture
+    }
 
     var bodyWidth: CGFloat {
         switch self.phase {
         case .dormant: self.anchorSize.width
         case .compact:
-            max(
-                IslandShellMetrics.compactBodyWidth,
-                self.anchorSize.width + IslandShellMetrics.compactSideWidth * 2)
+            self.hasPhysicalNotch
+                ? self.anchorSize.width
+                : max(
+                    IslandShellMetrics.compactBodyWidth,
+                    self.anchorSize.width + IslandShellMetrics.compactSideWidth * 2)
         case .expanded: max(IslandShellMetrics.expandedBodyWidth, self.anchorSize.width)
         }
     }
 
     var shoulderRadius: CGFloat {
-        self.phase == .dormant ? 0 : IslandShellMetrics.shoulderRadius
+        self.phase == .dormant || (self.phase == .compact && self.hasPhysicalNotch)
+            ? 0
+            : IslandShellMetrics.shoulderRadius
     }
 
     var totalWidth: CGFloat {
@@ -109,7 +126,7 @@ struct IslandShellPresentation: Equatable {
     var height: CGFloat {
         switch self.phase {
         case .dormant: self.anchorSize.height
-        case .compact: IslandShellMetrics.compactHeight
+        case .compact: self.hasPhysicalNotch ? self.anchorSize.height : IslandShellMetrics.compactHeight
         case .expanded: IslandShellMetrics.expandedHeight
         }
     }
@@ -117,19 +134,28 @@ struct IslandShellPresentation: Equatable {
     var bottomRadius: CGFloat {
         switch self.phase {
         case .dormant: 0
-        case .compact: IslandShellMetrics.compactBottomRadius
+        case .compact: self.hasPhysicalNotch ? 0 : IslandShellMetrics.compactBottomRadius
         case .expanded: IslandShellMetrics.expandedBottomRadius
         }
     }
+}
+
+enum IslandShellFixtureIndicatorScenario: String, Equatable {
+    case running
+    case claudeAttention = "claude-attention"
+    case codexAttention = "codex-attention"
+    case bothAttention = "both-attention"
 }
 
 struct IslandShellLaunchOptions: Equatable {
     let phase: IslandShellPhase
     let reduceMotion: Bool
     let isFixture: Bool
+    let indicatorScenario: IslandShellFixtureIndicatorScenario
 
     init(arguments: [String]) {
         self.isFixture = arguments.contains("--island-fixture-phase")
+            || arguments.contains("--island-fixture-status")
         if let flag = arguments.firstIndex(of: "--island-fixture-phase"),
            arguments.indices.contains(flag + 1)
         {
@@ -142,6 +168,14 @@ struct IslandShellLaunchOptions: Equatable {
             self.phase = .compact
         }
         self.reduceMotion = arguments.contains("--island-reduce-motion")
+        if let flag = arguments.firstIndex(of: "--island-fixture-status"),
+           arguments.indices.contains(flag + 1),
+           let scenario = IslandShellFixtureIndicatorScenario(rawValue: arguments[flag + 1])
+        {
+            self.indicatorScenario = scenario
+        } else {
+            self.indicatorScenario = .running
+        }
     }
 
     static var current: IslandShellLaunchOptions {

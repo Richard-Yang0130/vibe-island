@@ -33,40 +33,74 @@ enum NotchMotion {
     }
 }
 
-enum NotchLightMotion: Equatable {
-    case off
-    case staticDim
-    case breathe
-    case doublePulse
-    case completionPulse
-    case triplePulse
-    case interruptedPulse
+enum NotchIndicatorSide: Equatable {
+    case left
+    case right
+}
+
+enum NotchIndicatorState: Equatable {
+    case hidden
+    case idle
+    case running
+    case attention
+}
+
+enum NotchIndicatorColor: String, Equatable {
+    case claude = "#D97757"
+    case codex = "#F5F5F5"
+
+    var swiftUIColor: Color {
+        switch self {
+        case .claude: Color(red: 217 / 255, green: 119 / 255, blue: 87 / 255)
+        case .codex: Color(red: 245 / 255, green: 245 / 255, blue: 245 / 255)
+        }
+    }
 }
 
 struct NotchLightPresentation: Equatable, Identifiable {
     let provider: AgentTaskProvider
-    let motion: NotchLightMotion
+    let side: NotchIndicatorSide
+    let color: NotchIndicatorColor
+    let state: NotchIndicatorState
 
     var id: AgentTaskProvider {
         self.provider
     }
 
+    var showsEdgeGlow: Bool {
+        self.state == .attention
+    }
+
     static func make(
         provider: AgentTaskProvider,
         status: AgentTaskStatus,
-        isConfigured: Bool)
+        isConfigured: Bool,
+        attention: AgentTaskAttention?)
         -> NotchLightPresentation
     {
-        guard isConfigured else { return NotchLightPresentation(provider: provider, motion: .off) }
-        let motion: NotchLightMotion = switch status {
-        case .idle: .staticDim
-        case .running: .breathe
-        case .needsApproval: .doublePulse
-        case .completed: .completionPulse
-        case .failed: .triplePulse
-        case .interrupted, .disconnected: .interruptedPulse
+        let side: NotchIndicatorSide = provider == .claude ? .left : .right
+        let color: NotchIndicatorColor = provider == .claude ? .claude : .codex
+        guard isConfigured else {
+            return NotchLightPresentation(provider: provider, side: side, color: color, state: .hidden)
         }
-        return NotchLightPresentation(provider: provider, motion: motion)
+        let attentionMatches = attention?.event.provider == provider && attention?.status.requiresUserAction == true
+        let state: NotchIndicatorState = if status.requiresUserAction || attentionMatches {
+            .attention
+        } else if status == .running {
+            .running
+        } else {
+            .idle
+        }
+        return NotchLightPresentation(provider: provider, side: side, color: color, state: state)
+    }
+}
+
+extension AgentTaskStatus {
+    fileprivate var requiresUserAction: Bool {
+        switch self {
+        case .needsApproval, .failed, .interrupted, .disconnected: true
+        case .idle, .running, .completed: false
+        }
     }
 }
 
@@ -75,24 +109,37 @@ struct NotchCollapsedPresentation: Equatable {
     let visibleText: String
 
     static func make(
-        codex: AgentTaskStatus,
         claude: AgentTaskStatus,
+        codex: AgentTaskStatus,
+        claudeConfigured: Bool = true,
         codexConfigured: Bool = true,
-        claudeConfigured: Bool = true)
+        attention: AgentTaskAttention? = nil)
         -> NotchCollapsedPresentation
     {
         NotchCollapsedPresentation(
             lights: [
                 NotchLightPresentation.make(
-                    provider: .codex,
-                    status: codex,
-                    isConfigured: codexConfigured),
-                NotchLightPresentation.make(
                     provider: .claude,
                     status: claude,
-                    isConfigured: claudeConfigured),
+                    isConfigured: claudeConfigured,
+                    attention: attention),
+                NotchLightPresentation.make(
+                    provider: .codex,
+                    status: codex,
+                    isConfigured: codexConfigured,
+                    attention: attention),
             ],
             visibleText: "")
+    }
+
+    static func fixture(_ scenario: IslandShellFixtureIndicatorScenario) -> NotchCollapsedPresentation {
+        let statuses: (claude: AgentTaskStatus, codex: AgentTaskStatus) = switch scenario {
+        case .running: (.running, .running)
+        case .claudeAttention: (.needsApproval, .running)
+        case .codexAttention: (.running, .needsApproval)
+        case .bothAttention: (.needsApproval, .failed)
+        }
+        return self.make(claude: statuses.claude, codex: statuses.codex)
     }
 }
 
@@ -199,6 +246,7 @@ struct NotchIslandView: View {
         VStack(spacing: 0) {
             IslandShellView(
                 presentation: self.state.shellPresentation,
+                indicators: self.state.collapsedPresentation,
                 reduceMotion: self.state.reduceMotion,
                 actions: IslandShellActions(
                     toggleExpanded: self.actions.toggleExpanded,
@@ -243,32 +291,19 @@ struct NotchIslandView: View {
                         endPoint: .bottom),
                     lineWidth: 0.8)
         }
-        .shadow(
-            color: .black.opacity(self.state.phase == .dormant ? 0 : 0.55),
-            radius: self.state.phase == .expanded ? 28 : 14,
-            y: self.state.phase == .expanded ? 14 : 6)
         .onHover { isInside in
             if isInside { self.actions.hoverEntered() }
         }
     }
 
     private var background: some View {
-        let accent = self.state.accent
-        return ZStack {
+        ZStack {
             Color.black
             LinearGradient(
                 colors: [Color(white: 0.085), Color(white: 0.015)],
                 startPoint: .top,
                 endPoint: .bottom)
                 .opacity(self.state.phase == .dormant ? 0 : 1)
-            if self.state.phase != .dormant {
-                RadialGradient(
-                    colors: [accent.end.opacity(0.34), accent.start.opacity(0.10), .clear],
-                    center: UnitPoint(x: 0.14, y: 0.42),
-                    startRadius: 4,
-                    endRadius: self.state.phase == .expanded ? 240 : 130)
-                    .blendMode(.plusLighter)
-            }
         }
         .allowsHitTesting(false)
     }
@@ -387,90 +422,14 @@ private struct NotchProviderLightsView: View {
 
     var body: some View {
         HStack(spacing: 7) {
-            ForEach(self.presentation.lights) { light in
-                NotchProviderLight(presentation: light)
-                    .id("\(light.provider.rawValue)-\(String(describing: light.motion))")
+            ForEach(self.presentation.lights.filter { $0.state != .hidden }) { light in
+                Circle()
+                    .fill(light.color.swiftUIColor)
+                    .frame(width: 5, height: 5)
+                    .opacity(light.state == .idle ? 0.3 : 1)
             }
         }
         .frame(height: NotchGeometry.lightShelfHeight)
-    }
-}
-
-private struct NotchProviderLight: View {
-    let presentation: NotchLightPresentation
-    @State private var startedAt = Date()
-
-    var body: some View {
-        TimelineView(.animation(
-            minimumInterval: 1 / 30,
-            paused: NotchMotion.reduceMotion || !self.isAnimated))
-        { context in
-            let appearance = self.appearance(at: context.date.timeIntervalSince(self.startedAt))
-            RoundedRectangle(cornerRadius: 3, style: .continuous)
-                .fill(self.color)
-                .frame(width: 8, height: 8)
-                .scaleEffect(appearance.scale)
-                .opacity(appearance.opacity)
-                .shadow(color: self.color.opacity(appearance.glow), radius: 4)
-        }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(self.accessibilityLabel)
-    }
-
-    private var color: Color {
-        switch self.presentation.provider {
-        case .codex: NotchPalette.mint
-        case .claude: Color(red: 1, green: 0.55, blue: 0.22)
-        }
-    }
-
-    private var isAnimated: Bool {
-        switch self.presentation.motion {
-        case .off, .staticDim: false
-        case .breathe, .doublePulse, .completionPulse, .triplePulse, .interruptedPulse: true
-        }
-    }
-
-    private var accessibilityLabel: String {
-        "\(self.presentation.provider.rawValue) \(String(describing: self.presentation.motion))"
-    }
-
-    private func appearance(at elapsed: TimeInterval) -> (opacity: Double, scale: Double, glow: Double) {
-        if NotchMotion.reduceMotion {
-            return self.presentation.motion == .off ? (0.08, 1, 0) : (0.72, 1, 0.25)
-        }
-        switch self.presentation.motion {
-        case .off:
-            return (0.08, 1, 0)
-        case .staticDim:
-            return (0.32, 1, 0.08)
-        case .breathe:
-            let wave = (sin(elapsed / 2.4 * .pi * 2 - .pi / 2) + 1) / 2
-            return (0.30 + wave * 0.68, 0.88 + wave * 0.12, 0.15 + wave * 0.65)
-        case .doublePulse:
-            return self.pulseAppearance(elapsed: elapsed, period: 1.35, beats: [0, 0.22])
-        case .completionPulse:
-            guard elapsed < 0.7 else { return (0.42, 1, 0.12) }
-            return self.pulseAppearance(elapsed: elapsed, period: 10, beats: [0.08], width: 0.28)
-        case .triplePulse:
-            return self.pulseAppearance(elapsed: elapsed, period: 1.45, beats: [0, 0.20, 0.40])
-        case .interruptedPulse:
-            return self.pulseAppearance(elapsed: elapsed, period: 1.8, beats: [0, 0.34], width: 0.18)
-        }
-    }
-
-    private func pulseAppearance(
-        elapsed: TimeInterval,
-        period: TimeInterval,
-        beats: [TimeInterval],
-        width: TimeInterval = 0.14)
-        -> (opacity: Double, scale: Double, glow: Double)
-    {
-        let position = elapsed.truncatingRemainder(dividingBy: period)
-        let strength = beats.map { beat in
-            max(0, 1 - abs(position - beat) / width)
-        }.max() ?? 0
-        return (0.26 + strength * 0.74, 0.88 + strength * 0.18, 0.1 + strength * 0.85)
     }
 }
 

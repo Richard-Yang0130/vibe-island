@@ -18,26 +18,44 @@ struct IslandShellPresentationTests {
     }
 
     @Test
-    func `compact and expanded phases use exact reference geometry`() {
+    func `physical notch compact phase exactly matches the hardware anchor`() {
         let anchor = CGSize(width: 156, height: 28)
         let compact = IslandShellPresentation(
             phase: .compact,
             anchorSize: anchor,
+            hasPhysicalNotch: true,
             fixture: .reference)
         let expanded = IslandShellPresentation(
             phase: .expanded,
             anchorSize: anchor,
+            hasPhysicalNotch: true,
             fixture: .reference)
 
-        #expect(compact.bodyWidth == 336)
-        #expect(compact.totalWidth == 362)
-        #expect(compact.height == 36)
-        #expect(compact.bottomRadius == 10)
+        #expect(compact.bodyWidth == 156)
+        #expect(compact.totalWidth == 156)
+        #expect(compact.height == 28)
+        #expect(compact.shoulderRadius == 0)
+        #expect(compact.bottomRadius == 0)
         #expect(expanded.bodyWidth == 380)
         #expect(expanded.totalWidth == 406)
         #expect(expanded.height == 175)
         #expect(expanded.bottomRadius == 14)
         #expect(expanded.shoulderRadius == 13)
+    }
+
+    @Test
+    func `notchless compact phase retains the simulated anchor shell`() {
+        let compact = IslandShellPresentation(
+            phase: .compact,
+            anchorSize: CGSize(width: 84, height: 20),
+            hasPhysicalNotch: false,
+            fixture: .reference)
+
+        #expect(compact.bodyWidth == 264)
+        #expect(compact.totalWidth == 290)
+        #expect(compact.height == 36)
+        #expect(compact.shoulderRadius == 13)
+        #expect(compact.bottomRadius == 10)
     }
 
     @Test
@@ -79,6 +97,32 @@ struct IslandShellPresentationTests {
     }
 
     @Test
+    func `status motion uses approved breathing and attention timings`() {
+        let running = NotchIndicatorMotion.dot(state: .running, reduceMotion: false)
+        let attention = NotchIndicatorMotion.edge(reduceMotion: false)
+
+        #expect(running.minimumOpacity == 0.35)
+        #expect(running.maximumOpacity == 1)
+        #expect(running.duration == 2.4)
+        #expect(attention.minimumOpacity == 0.35)
+        #expect(attention.maximumOpacity == 1)
+        #expect(attention.duration == 1.2)
+    }
+
+    @Test
+    func `reduce motion keeps status indicators steadily bright`() {
+        let running = NotchIndicatorMotion.dot(state: .running, reduceMotion: true)
+        let attention = NotchIndicatorMotion.edge(reduceMotion: true)
+
+        #expect(running.minimumOpacity == 1)
+        #expect(running.maximumOpacity == 1)
+        #expect(running.duration == nil)
+        #expect(attention.minimumOpacity == 1)
+        #expect(attention.maximumOpacity == 1)
+        #expect(attention.duration == nil)
+    }
+
+    @Test
     func `shell outline fills its requested bounds`() {
         let rect = CGRect(x: 0, y: 0, width: 406, height: 175)
         let path = IslandShellShape(shoulderRadius: 13, bottomRadius: 14).path(in: rect)
@@ -116,6 +160,7 @@ struct IslandShellPresentationTests {
         #expect(options.phase == .expanded)
         #expect(options.reduceMotion)
         #expect(options.isFixture)
+        #expect(options.indicatorScenario == .running)
     }
 
     @Test
@@ -136,5 +181,26 @@ struct IslandShellPresentationTests {
         let options = IslandShellLaunchOptions(arguments: ["CodexBar"])
 
         #expect(!options.isFixture)
+    }
+
+    @Test(arguments: [
+        ("running", IslandShellFixtureIndicatorScenario.running),
+        ("claude-attention", .claudeAttention),
+        ("codex-attention", .codexAttention),
+        ("both-attention", .bothAttention),
+    ])
+    func `fixture status selects a deterministic indicator scenario`(
+        _ value: String,
+        _ expected: IslandShellFixtureIndicatorScenario)
+    {
+        let options = IslandShellLaunchOptions(arguments: [
+            "CodexBar",
+            "--island-fixture-phase",
+            "compact",
+            "--island-fixture-status",
+            value,
+        ])
+
+        #expect(options.indicatorScenario == expected)
     }
 }
