@@ -94,7 +94,7 @@ struct NotchGeometryTests {
         state.notchSize = CGSize(width: 156, height: 28)
 
         state.phase = .compact
-        #expect(state.shellPresentation.totalWidth == 266)
+        #expect(state.shellPresentation.totalWidth == 362)
         #expect(state.shellPresentation.height == 36)
 
         state.phase = .expanded

@@ -29,8 +29,8 @@ struct IslandShellPresentationTests {
             anchorSize: anchor,
             fixture: .reference)
 
-        #expect(compact.bodyWidth == 240)
-        #expect(compact.totalWidth == 266)
+        #expect(compact.bodyWidth == 336)
+        #expect(compact.totalWidth == 362)
         #expect(compact.height == 36)
         #expect(compact.bottomRadius == 10)
         #expect(expanded.bodyWidth == 380)
@@ -96,6 +96,7 @@ struct IslandShellPresentationTests {
     func `fixture layout uses the measured overview dimensions`() {
         #expect(IslandShellFixtureLayout.compactSpacing == 8)
         #expect(IslandShellFixtureLayout.compactPetSize == 20)
+        #expect(IslandShellFixtureLayout.compactSideWidth == 90)
         #expect(IslandShellFixtureLayout.horizontalPadding == 12)
         #expect(IslandShellFixtureLayout.verticalPadding == 10)
         #expect(IslandShellFixtureLayout.usageHeight == 15)
@@ -114,6 +115,7 @@ struct IslandShellPresentationTests {
 
         #expect(options.phase == .expanded)
         #expect(options.reduceMotion)
+        #expect(options.isFixture)
     }
 
     @Test
@@ -126,5 +128,13 @@ struct IslandShellPresentationTests {
 
         #expect(options.phase == .compact)
         #expect(!options.reduceMotion)
+        #expect(options.isFixture)
+    }
+
+    @Test
+    func `regular launch does not force the fixture surface`() {
+        let options = IslandShellLaunchOptions(arguments: ["CodexBar"])
+
+        #expect(!options.isFixture)
     }
 }

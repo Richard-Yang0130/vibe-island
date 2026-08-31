@@ -3,6 +3,7 @@ import SwiftUI
 enum IslandShellFixtureLayout {
     static let compactSpacing: CGFloat = 8
     static let compactPetSize: CGFloat = 20
+    static let compactSideWidth = IslandShellMetrics.compactSideWidth
     static let horizontalPadding: CGFloat = 12
     static let verticalPadding: CGFloat = 10
     static let usageHeight: CGFloat = 15
@@ -57,20 +58,34 @@ struct IslandPixelPet: View {
 }
 
 struct IslandCompactFixtureView: View {
-    let fixture: IslandShellFixture
+    let presentation: IslandShellPresentation
+
+    private var sideWidth: CGFloat {
+        (self.presentation.bodyWidth - self.presentation.anchorSize.width) / 2
+    }
 
     var body: some View {
-        HStack(spacing: IslandShellFixtureLayout.compactSpacing) {
-            IslandPixelPet(tone: .idle, size: IslandShellFixtureLayout.compactPetSize)
-            Text(self.fixture.compactTitle)
-                .font(.custom(IslandShellFont.familyName, size: 11))
-                .foregroundStyle(.white.opacity(0.82))
-                .lineLimit(1)
-            Text("\(self.fixture.sessionCount)")
+        ZStack {
+            HStack(spacing: IslandShellFixtureLayout.compactSpacing) {
+                IslandPixelPet(tone: .idle, size: IslandShellFixtureLayout.compactPetSize)
+                Text(self.presentation.fixture.compactTitle)
+                    .font(.custom(IslandShellFont.familyName, size: 11))
+                    .foregroundStyle(.white.opacity(0.82))
+                    .lineLimit(1)
+            }
+            .frame(width: self.sideWidth, alignment: .leading)
+            .clipped()
+            .position(x: self.sideWidth / 2, y: self.presentation.height / 2)
+
+            Text("\(self.presentation.fixture.sessionCount)")
                 .font(.custom(IslandShellFont.familyName, size: 9))
                 .foregroundStyle(.white.opacity(0.52))
+                .frame(width: self.sideWidth, alignment: .trailing)
+                .position(
+                    x: self.presentation.bodyWidth - self.sideWidth / 2,
+                    y: self.presentation.height / 2)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .frame(width: self.presentation.bodyWidth, height: self.presentation.height)
     }
 }
 

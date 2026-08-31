@@ -101,7 +101,7 @@ struct IslandShellView: View {
         let profile = IslandShellMotion.profile(reduceMotion: self.reduceMotion)
 
         return ZStack {
-            IslandCompactFixtureView(fixture: self.presentation.fixture)
+            IslandCompactFixtureView(presentation: self.presentation)
                 .opacity(compactVisible ? 1 : 0)
                 .blur(radius: compactVisible ? 0 : profile.blurRadius)
                 .scaleEffect(compactVisible ? 1 : profile.hiddenScale)

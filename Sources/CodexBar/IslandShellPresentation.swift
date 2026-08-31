@@ -66,6 +66,7 @@ struct IslandShellFixture: Equatable {
 
 enum IslandShellMetrics {
     static let compactBodyWidth: CGFloat = 240
+    static let compactSideWidth: CGFloat = 90
     static let expandedBodyWidth: CGFloat = 380
     static let compactHeight: CGFloat = 36
     static let expandedHeight: CGFloat = 175
@@ -89,7 +90,10 @@ struct IslandShellPresentation: Equatable {
     var bodyWidth: CGFloat {
         switch self.phase {
         case .dormant: self.anchorSize.width
-        case .compact: max(IslandShellMetrics.compactBodyWidth, self.anchorSize.width)
+        case .compact:
+            max(
+                IslandShellMetrics.compactBodyWidth,
+                self.anchorSize.width + IslandShellMetrics.compactSideWidth * 2)
         case .expanded: max(IslandShellMetrics.expandedBodyWidth, self.anchorSize.width)
         }
     }
@@ -122,8 +126,10 @@ struct IslandShellPresentation: Equatable {
 struct IslandShellLaunchOptions: Equatable {
     let phase: IslandShellPhase
     let reduceMotion: Bool
+    let isFixture: Bool
 
     init(arguments: [String]) {
+        self.isFixture = arguments.contains("--island-fixture-phase")
         if let flag = arguments.firstIndex(of: "--island-fixture-phase"),
            arguments.indices.contains(flag + 1)
         {

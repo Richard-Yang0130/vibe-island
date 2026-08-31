@@ -509,10 +509,18 @@ final class NotchBarController: NSObject {
         self.state.notchSize = layout.anchorRect.size
         let launchOptions = IslandShellLaunchOptions.current
         self.state.phase = launchOptions.phase
+        self.state.isPinned = launchOptions.isFixture && launchOptions.phase == .expanded
         self.state.reduceMotion = launchOptions.reduceMotion
             || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         self.applyPanelFrame()
-        self.panel.orderFrontRegardless()
+        if launchOptions.isFixture {
+            self.panel.styleMask = [.borderless]
+            NSApp.setActivationPolicy(.regular)
+            NSApp.activate(ignoringOtherApps: true)
+            self.panel.makeKeyAndOrderFront(nil)
+        } else {
+            self.panel.orderFrontRegardless()
+        }
         self.installEventMonitors()
         self.refreshPillContent()
         self.refreshHoverZone()
@@ -753,7 +761,7 @@ final class NotchBarController: NSObject {
     private func collapseNow() {
         self.dwellTask?.cancel()
         self.dwellTask = nil
-        guard self.state.phase == .expanded else { return }
+        guard self.state.phase == .expanded, !self.state.isPinned else { return }
         self.lastCollapsedAt = Date()
         self.setPhase(.compact)
     }

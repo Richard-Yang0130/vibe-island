@@ -1085,9 +1085,10 @@ extension StatusItemController {
     }
 
     private var shouldShowNotchSurfaces: Bool {
-        self.settings.agentTaskStatusEnabled && AgentTaskProvider.allCases.contains { provider in
-            AgentTaskHookInstaller().inspect(provider).document == .installed
-        }
+        IslandShellLaunchOptions.current.isFixture
+            || self.settings.agentTaskStatusEnabled && AgentTaskProvider.allCases.contains { provider in
+                AgentTaskHookInstaller().inspect(provider).document == .installed
+            }
     }
 
     private static var emptyNotchBarContentSnapshot: NotchBarContentSnapshot {
