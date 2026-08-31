@@ -13,6 +13,7 @@
 - 第一阶段不读取真实账户或 Keychain，不触发真实 Agent hooks。
 - 保留 CodexBar 品牌；轮廓、布局、像素语言和动画按 Vibe Island 复刻。
 - 第一阶段只交付外壳。真实额度是第二阶段第一个接入的功能。
+- 功能阶段当前只接入 Claude Code 与 OpenAI Codex CLI/Desktop 的 Agent 提示；其他 Agent 暂不接入。
 
 ## 方案选择
 
@@ -199,6 +200,7 @@ Debug-only 入口，可强制展示 dormant、compact、expanded 和 Reduce Moti
 - 精准跳转
 - Settings 与 onboarding 重做
 - SSH Remote 与移动通知
-- 26 Agent / 20 Terminal 兼容矩阵
+- Gemini、Cursor、OpenCode 等其他 Agent
+- 完整 26 Agent / 20 Terminal 兼容矩阵
 
 这些功能不会被删除，只是不参与外壳验收。

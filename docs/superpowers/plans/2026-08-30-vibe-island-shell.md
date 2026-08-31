@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (- [ ]) syntax for tracking.
 
-**Goal:** Replace the current Notch presentation with a fixture-driven, pixel-accurate Vibe Island shell while leaving all quota, provider, account, Keychain, and agent integrations untouched.
+**Goal:** Replace the current Notch presentation with a fixture-driven, pixel-accurate Vibe Island shell while leaving all quota, provider, account, Keychain, and agent integrations untouched; follow-on Agent prompts are limited to Claude Code and OpenAI Codex.
 
 **Architecture:** Keep one fixed transparent AppKit stage at the top of each screen and animate only the SwiftUI island inside it. A pure IslandShellPresentation model owns geometry and fixture content; the controller owns hover/click/ESC choreography; real product data remains disconnected until shell acceptance.
 
@@ -51,6 +51,8 @@ Create Tests/CodexBarTests/IslandShellPresentationTests.swift:
             #expect(fixture.primary.title == "fix auth bug")
             #expect(fixture.primary.status == "Writing middleware.ts")
             #expect(fixture.secondary.map(\.title) == ["backend server", "optimize queries"])
+            #expect(([fixture.primary] + fixture.secondary).map(\.agent)
+                == ["Claude Code", "Codex", "Claude Code"])
         }
 
         @Test
@@ -141,7 +143,7 @@ Create Sources/CodexBar/IslandShellPresentation.swift:
             primary: IslandShellSessionFixture(
                 id: "claude-fix-auth",
                 title: "fix auth bug",
-                agent: "Claude",
+                agent: "Claude Code",
                 host: "iTerm",
                 duration: "27m",
                 prompt: "You: fix the auth bug in middleware",
@@ -160,7 +162,7 @@ Create Sources/CodexBar/IslandShellPresentation.swift:
                 IslandShellSessionFixture(
                     id: "gemini-queries",
                     title: "optimize queries",
-                    agent: "Gemini",
+                    agent: "Claude Code",
                     host: "Ghostty",
                     duration: "5h",
                     prompt: nil,
