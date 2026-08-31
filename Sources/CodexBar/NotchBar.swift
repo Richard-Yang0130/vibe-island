@@ -447,6 +447,7 @@ final class NotchBarController: NSObject {
     private let onOpenTask: @MainActor () -> Void
     private let onDismissAttention: @MainActor () -> Void
     private let refreshMonitor: MenuCardRefreshMonitor?
+    private let launchOptions = IslandShellLaunchOptions.current
     private let state = NotchBarState()
     private let panel: NotchBarPanel
     private var screen: NSScreen
@@ -507,13 +508,11 @@ final class NotchBarController: NSObject {
         super.init()
         self.configurePanel()
         self.state.notchSize = layout.anchorRect.size
-        let launchOptions = IslandShellLaunchOptions.current
-        self.state.phase = launchOptions.phase
-        self.state.isPinned = launchOptions.isFixture && launchOptions.phase == .expanded
-        self.state.reduceMotion = launchOptions.reduceMotion
+        self.state.phase = self.launchOptions.phase
+        self.state.reduceMotion = self.launchOptions.reduceMotion
             || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         self.applyPanelFrame()
-        if launchOptions.isFixture {
+        if self.launchOptions.isFixture {
             self.panel.styleMask = [.borderless]
             NSApp.setActivationPolicy(.regular)
             NSApp.activate(ignoringOtherApps: true)
@@ -700,6 +699,10 @@ final class NotchBarController: NSObject {
     }
 
     private func updatePanelMouseEventPolicy(pointerLocation: CGPoint) {
+        guard !self.launchOptions.isFixture else {
+            self.panel.ignoresMouseEvents = false
+            return
+        }
         self.panel.ignoresMouseEvents = NotchMouseEventPolicy.ignoresMouseEvents(
             pointerLocation: pointerLocation,
             hoverZone: self.hoverZone)
