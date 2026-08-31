@@ -424,7 +424,6 @@ Then:
 - Create: Sources/CodexBar/Resources/Fonts/DepartureMono-Regular.otf
 - Create: Sources/CodexBar/Resources/Fonts/DepartureMono-OFL.txt
 - Modify: Sources/CodexBar/IslandShellView.swift
-- Modify: Sources/CodexBar/NotchIslandView.swift
 
 - [ ] **Step 1: Write the failing font-resource test**
 
@@ -492,7 +491,7 @@ Create Sources/CodexBar/IslandShellFont.swift:
         }
     }
 
-Call IslandShellFont.register() at the start of NotchBarController.configurePanel(), before constructing NotchIslandView.
+Register the font when Task 4 connects the shell to NotchBarController.
 
 - [ ] **Step 4: Build the fixture views**
 
@@ -767,32 +766,7 @@ Append to IslandShellView.swift:
         }
     }
 
-- [ ] **Step 6: Route NotchIslandView to the new shell**
-
-Replace the visible NotchIslandView body with:
-
-    struct NotchIslandView: View {
-        let state: NotchBarState
-        let actions: NotchIslandActions
-
-        var body: some View {
-            VStack(spacing: 0) {
-                IslandShellView(
-                    presentation: self.state.shellPresentation,
-                    reduceMotion: self.state.reduceMotion,
-                    actions: IslandShellActions(
-                        toggleExpanded: self.actions.toggleExpanded,
-                        hoverEntered: self.actions.hoverEntered))
-                Spacer(minLength: 0)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            .offset(x: self.state.centerOffset)
-        }
-    }
-
-Keep the legacy feature presentation types compiled but unreachable until the function phase.
-
-- [ ] **Step 7: Build and commit**
+- [ ] **Step 6: Build and commit**
 
 Run:
 
@@ -803,13 +777,14 @@ Expected: build succeeds and focused tests pass.
 
 Then:
 
-    git add Sources/CodexBar/IslandShellFont.swift Sources/CodexBar/IslandShellView.swift Sources/CodexBar/IslandShellFixtureViews.swift Sources/CodexBar/NotchIslandView.swift Sources/CodexBar/Resources/Fonts
+    git add Sources/CodexBar/IslandShellFont.swift Sources/CodexBar/IslandShellView.swift Sources/CodexBar/IslandShellFixtureViews.swift Sources/CodexBar/Resources/Fonts
     git commit -m "Render Vibe Island shell fixtures"
 
 ### Task 4: Fixed stage and stable hover choreography
 
 **Files:**
 - Modify: Sources/CodexBar/NotchBar.swift
+- Modify: Sources/CodexBar/NotchIslandView.swift
 - Modify: Tests/CodexBarTests/NotchGeometryTests.swift
 - Create: Tests/CodexBarTests/IslandShellInteractionPolicyTests.swift
 
@@ -887,6 +862,8 @@ Replace the top of NotchGeometry with:
         static let hoverGrace: CGFloat = IslandShellMetrics.hoverGrace
 
 Keep the existing layout functions below these constants. Leave product-data properties present but unused by shellPresentation.
+
+At the start of NotchBarController.configurePanel(), call IslandShellFont.register(). Replace the visible NotchIslandView body with IslandShellView using state.shellPresentation, state.reduceMotion, toggleExpanded, and hoverEntered. Keep the legacy feature presentation types compiled but unreachable until the function phase.
 
 - [ ] **Step 4: Add the pure interaction policy**
 

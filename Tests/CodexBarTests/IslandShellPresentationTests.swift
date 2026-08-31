@@ -85,4 +85,21 @@ struct IslandShellPresentationTests {
 
         #expect(path.boundingRect == rect)
     }
+
+    @Test
+    func `departure mono ships with its OFL license`() {
+        #expect(IslandShellFont.fontURL != nil)
+        #expect(IslandShellFont.licenseURL != nil)
+    }
+
+    @Test
+    func `fixture layout uses the measured overview dimensions`() {
+        #expect(IslandShellFixtureLayout.compactSpacing == 8)
+        #expect(IslandShellFixtureLayout.compactPetSize == 20)
+        #expect(IslandShellFixtureLayout.horizontalPadding == 12)
+        #expect(IslandShellFixtureLayout.verticalPadding == 10)
+        #expect(IslandShellFixtureLayout.usageHeight == 15)
+        #expect(IslandShellFixtureLayout.primaryHeight == 60)
+        #expect(IslandShellFixtureLayout.secondaryHeight == 28)
+    }
 }
