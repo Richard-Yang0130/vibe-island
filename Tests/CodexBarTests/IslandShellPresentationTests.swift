@@ -53,4 +53,36 @@ struct IslandShellPresentationTests {
         #expect(presentation.shoulderRadius == 0)
         #expect(presentation.bottomRadius == 0)
     }
+
+    @Test
+    func `standard motion matches the public shell timing`() {
+        let profile = IslandShellMotion.profile(reduceMotion: false)
+
+        #expect(profile.containerDuration == 0.50)
+        #expect(profile.radiusDuration == 0.40)
+        #expect(profile.opacityDuration == 0.25)
+        #expect(profile.blurDuration == 0.30)
+        #expect(profile.scaleDuration == 0.35)
+        #expect(profile.contentDelay == 0.06)
+        #expect(profile.blurRadius == 6)
+        #expect(profile.hiddenScale == 0.96)
+    }
+
+    @Test
+    func `reduce motion removes blur and overshoot`() {
+        let profile = IslandShellMotion.profile(reduceMotion: true)
+
+        #expect(profile.containerDuration == 0.14)
+        #expect(profile.contentDelay == 0)
+        #expect(profile.blurRadius == 0)
+        #expect(profile.hiddenScale == 1)
+    }
+
+    @Test
+    func `shell outline fills its requested bounds`() {
+        let rect = CGRect(x: 0, y: 0, width: 406, height: 175)
+        let path = IslandShellShape(shoulderRadius: 13, bottomRadius: 14).path(in: rect)
+
+        #expect(path.boundingRect == rect)
+    }
 }
