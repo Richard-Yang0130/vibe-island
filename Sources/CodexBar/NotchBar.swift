@@ -118,16 +118,6 @@ extension AgentTaskStatus {
     }
 }
 
-// MARK: - Phase
-
-/// Three-step reveal: invisible until the pointer arrives, a menu-bar-height teaser on approach,
-/// then the full panel once the pointer settles.
-enum NotchPhase: Equatable {
-    case dormant
-    case peek
-    case expanded
-}
-
 // MARK: - Geometry
 
 struct NotchBarLayout: Equatable {
@@ -142,15 +132,10 @@ struct NotchBarLayout: Equatable {
 }
 
 enum NotchGeometry {
-    /// How far each wing extends past the notch while peeking.
-    static let peekWingWidth: CGFloat = 116
-    static let expandedBodyWidth: CGFloat = 428
-    static let shoulderRadius: CGFloat = 13
-    static let peekBottomRadius: CGFloat = 15
-    static let expandedBottomRadius: CGFloat = 26
-    static let stageHeight: CGFloat = 520
+    static let stageWidth: CGFloat = IslandShellMetrics.stageWidth
+    static let stageHeight: CGFloat = IslandShellMetrics.stageHeight
     /// Slack on both sides of the stage window so the island's drop shadow is not clipped.
-    static let stageSideMargin: CGFloat = 44
+    static let stageSideMargin: CGFloat = IslandShellMetrics.stageSideMargin
     /// Extra pointer-catching width/height around the sleeping notch.
     static let dormantSideGrab: CGFloat = 20
     static let dormantBottomGrab: CGFloat = 8
@@ -158,11 +143,7 @@ enum NotchGeometry {
     static let simulatedAnchorSize = CGSize(width: 84, height: 20)
     static let simulatedTopGap: CGFloat = 6
     /// Forgiveness margin so a slightly wandering pointer does not collapse the panel.
-    static let hoverGrace: CGFloat = 16
-
-    static var stageWidth: CGFloat {
-        self.expandedBodyWidth + self.shoulderRadius * 2 + self.stageSideMargin * 2
-    }
+    static let hoverGrace: CGFloat = IslandShellMetrics.hoverGrace
 
     static func layout(
         screenFrame: CGRect,
@@ -231,6 +212,19 @@ enum NotchGeometry {
 enum NotchMouseEventPolicy {
     static func ignoresMouseEvents(pointerLocation: CGPoint, hoverZone: CGRect) -> Bool {
         !hoverZone.contains(pointerLocation)
+    }
+}
+
+enum IslandShellInteractionPolicy {
+    static func hoverZone(visibleBounds: CGRect) -> CGRect {
+        visibleBounds.insetBy(
+            dx: -IslandShellMetrics.hoverGrace,
+            dy: -IslandShellMetrics.hoverGrace)
+    }
+
+    static func canEnter(now: Date, collapsedAt: Date?) -> Bool {
+        guard let collapsedAt else { return true }
+        return now.timeIntervalSince(collapsedAt) >= IslandShellMetrics.hoverCooldown
     }
 }
 
@@ -341,7 +335,7 @@ final class NotchIslandHostingView<Content: View>: NSHostingView<Content> {
 @MainActor
 @Observable
 final class NotchBarState {
-    var phase: NotchPhase = .dormant
+    var phase: IslandShellPhase = .compact
     var pill: NotchPillContent?
     var selectedProvider: UsageProvider = .codex
     var enabledProviders: [UsageProvider] = []
@@ -356,50 +350,45 @@ final class NotchBarState {
     /// had to be clamped to the screen edge.
     var centerOffset: CGFloat = 0
     var isPinned = false
+    var reduceMotion = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
 }
 
 // MARK: - NotchBarState + derived layout
 
 extension NotchBarState {
+    var shellPresentation: IslandShellPresentation {
+        IslandShellPresentation(
+            phase: self.phase,
+            anchorSize: self.notchSize,
+            fixture: .reference)
+    }
+
     var plan: NotchDetailPlan {
         NotchDetailPlan(card: self.card)
     }
 
     var bodyWidth: CGFloat {
-        switch self.phase {
-        case .dormant:
-            self.notchSize.width
-        case .peek:
-            self.notchSize.width + NotchGeometry.peekWingWidth * 2
-        case .expanded:
-            max(NotchGeometry.expandedBodyWidth, self.notchSize.width + NotchGeometry.peekWingWidth)
-        }
+        self.shellPresentation.bodyWidth
     }
 
     var shoulderRadius: CGFloat {
-        self.phase == .dormant ? 0 : NotchGeometry.shoulderRadius
+        self.shellPresentation.shoulderRadius
     }
 
     var bottomRadius: CGFloat {
-        switch self.phase {
-        case .dormant: 0
-        case .peek: NotchGeometry.peekBottomRadius
-        case .expanded: NotchGeometry.expandedBottomRadius
-        }
+        self.shellPresentation.bottomRadius
     }
 
     var totalWidth: CGFloat {
-        self.bodyWidth + self.shoulderRadius * 2
+        self.shellPresentation.totalWidth
     }
 
     var islandHeight: CGFloat {
-        self.phase == .expanded
-            ? self.compactHeight + NotchTaskDetailView.height
-            : self.compactHeight
+        self.shellPresentation.height
     }
 
     var compactHeight: CGFloat {
-        self.notchSize.height + NotchGeometry.lightShelfHeight
+        IslandShellMetrics.compactHeight
     }
 
     var collapsedPresentation: NotchCollapsedPresentation {
@@ -466,18 +455,11 @@ final class NotchBarController: NSObject {
     private var pointerWatchdog: Timer?
     private var dwellTask: Task<Void, Never>?
     private var collapseTask: Task<Void, Never>?
-    private var settleTask: Task<Void, Never>?
     private var isPointerInside = false
     private var hoverZone: CGRect = .zero
+    private var lastCollapsedAt: Date?
     private var lastFullscreenCheckAt = Date.distantPast
     private var cachedFullscreen = false
-    private var attentionDismissTask: Task<Void, Never>?
-    private var presentedAttentionID: String?
-
-    /// Delay before a hovering pointer promotes the teaser into the full panel.
-    private static let dwellInterval: Double = 0.2
-    /// Grace period before an exited pointer closes the panel.
-    private static let collapseDelay: Double = 0.32
 
     var isActive: Bool {
         self.layout != nil
@@ -535,6 +517,7 @@ final class NotchBarController: NSObject {
     // MARK: - Setup
 
     private func configurePanel() {
+        IslandShellFont.register()
         self.panel.level = NSWindow.Level(rawValue: NSWindow.Level.statusBar.rawValue + 2)
         self.panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle, .stationary]
         self.panel.backgroundColor = .clear
@@ -631,51 +614,22 @@ final class NotchBarController: NSObject {
         self.refreshPillContent()
     }
 
-    func present(_ attention: AgentTaskAttention) {
-        guard NotchSurfaceVisibilityPolicy.shouldExpand(trigger: .taskAttention, isFullscreen: false) else { return }
-        self.attentionDismissTask?.cancel()
-        self.presentedAttentionID = attention.id
-        self.state.attention = attention
-        self.setPinned(true)
-        self.openStage()
-        self.setPhase(.expanded, animation: NotchMotion.expanding)
-        if let delay = NotchAttentionPolicy.dismissAfter(status: attention.status) {
-            self.attentionDismissTask = Task { [weak self] in
-                try? await Task.sleep(for: .seconds(delay))
-                guard !Task.isCancelled, let self, self.presentedAttentionID == attention.id else { return }
-                self.onDismissAttention()
-                self.collapseAttention()
-            }
-        }
-    }
+    func present(_: AgentTaskAttention) {}
 
-    func collapseForExternalAttention() {
-        self.attentionDismissTask?.cancel()
-        self.attentionDismissTask = nil
-        self.presentedAttentionID = nil
-        self.setPinned(false)
-        self.collapseNow()
-    }
+    func collapseForExternalAttention() {}
 
-    func collapseAttention() {
-        guard self.presentedAttentionID != nil else { return }
-        self.collapseForExternalAttention()
-        self.state.attention = nil
-    }
+    func collapseAttention() {}
 
     /// Used by the global hotkey and by clicks on the band.
     func toggle() {
         if self.state.phase == .expanded {
-            self.setPinned(false)
             self.collapseNow()
-        } else {
+        } else if self.state.phase == .compact {
             guard NotchSurfaceVisibilityPolicy.shouldExpand(
                 trigger: .click,
                 isFullscreen: self.isFullscreen())
             else { return }
-            self.setPinned(true)
-            self.openStage()
-            self.setPhase(.expanded, animation: NotchMotion.expanding)
+            self.setPhase(.expanded)
             self.startPointerWatchdog()
         }
     }
@@ -697,34 +651,8 @@ final class NotchBarController: NSObject {
 
     private func applyPanelFrame() {
         guard let layout else { return }
-        let frame = self.state.phase == .dormant ? layout.dormantFrame : layout.stageFrame
-        self.panel.setFrame(frame, display: true)
-        self.state.centerOffset = layout.anchorRect.midX - frame.midX
-    }
-
-    /// Grows the host window to its full footprint *before* the island animates, so the expanding
-    /// silhouette is never clipped by the window edge.
-    private func openStage() {
-        self.settleTask?.cancel()
-        self.settleTask = nil
-        self.attentionDismissTask?.cancel()
-        self.attentionDismissTask = nil
-        guard let layout, self.panel.frame != layout.stageFrame else { return }
         self.panel.setFrame(layout.stageFrame, display: true)
         self.state.centerOffset = layout.anchorRect.midX - layout.stageFrame.midX
-    }
-
-    /// Shrinks the window back to the notch once the collapse animation has finished, restoring
-    /// click-through for everything below the menu bar.
-    private func scheduleStageSettle() {
-        self.settleTask?.cancel()
-        self.settleTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(NotchMotion.collapseSettleDelay))
-            guard !Task.isCancelled, let self, self.state.phase == .dormant, let layout = self.layout else { return }
-            self.panel.setFrame(layout.dormantFrame, display: true)
-            self.state.centerOffset = layout.anchorRect.midX - layout.dormantFrame.midX
-            self.stopPointerWatchdog()
-        }
     }
 
     // MARK: - Hover choreography
@@ -750,18 +678,13 @@ final class NotchBarController: NSObject {
             self.hoverZone = .zero
             return
         }
-        guard self.state.phase != .dormant else {
-            self.hoverZone = layout.dormantFrame
-            return
-        }
-        let width = self.state.totalWidth
-        let height = self.state.islandHeight
-        self.hoverZone = CGRect(
-            x: layout.anchorRect.midX - width / 2,
-            y: layout.stageFrame.maxY - height,
-            width: width,
-            height: height)
-            .insetBy(dx: -NotchGeometry.hoverGrace, dy: -NotchGeometry.hoverGrace)
+        let shell = self.state.shellPresentation
+        let visibleBounds = CGRect(
+            x: layout.anchorRect.midX - shell.totalWidth / 2,
+            y: layout.stageFrame.maxY - shell.height,
+            width: shell.totalWidth,
+            height: shell.height)
+        self.hoverZone = IslandShellInteractionPolicy.hoverZone(visibleBounds: visibleBounds)
     }
 
     private func updatePanelMouseEventPolicy(pointerLocation: CGPoint) {
@@ -773,18 +696,20 @@ final class NotchBarController: NSObject {
     private func pointerDidEnter() {
         self.collapseTask?.cancel()
         self.collapseTask = nil
+        guard IslandShellInteractionPolicy.canEnter(
+            now: Date(),
+            collapsedAt: self.lastCollapsedAt)
+        else { return }
         guard !self.isPointerInside else { return }
         guard NotchSurfaceVisibilityPolicy.shouldExpand(
             trigger: .hover,
             isFullscreen: self.isFullscreen())
         else { return }
         self.isPointerInside = true
-        if self.state.phase == .dormant {
-            self.openStage()
-            self.setPhase(.peek, animation: NotchMotion.expanding)
+        if self.state.phase == .compact {
+            self.scheduleDwellExpansion()
             self.startPointerWatchdog()
         }
-        self.scheduleDwellExpansion()
     }
 
     private func pointerDidExit() {
@@ -792,25 +717,30 @@ final class NotchBarController: NSObject {
         self.isPointerInside = false
         self.dwellTask?.cancel()
         self.dwellTask = nil
-        guard !self.state.isPinned else { return }
-        self.scheduleCollapse()
+        if self.state.phase == .expanded {
+            self.scheduleCollapse()
+        }
     }
 
     private func scheduleDwellExpansion() {
-        guard self.state.phase == .peek, self.dwellTask == nil else { return }
+        guard self.state.phase == .compact, self.dwellTask == nil else { return }
         self.dwellTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(Self.dwellInterval))
-            guard !Task.isCancelled, let self, self.isPointerInside, self.state.phase == .peek else { return }
+            try? await Task.sleep(for: .seconds(IslandShellMetrics.hoverDelay))
+            guard !Task.isCancelled,
+                  let self,
+                  self.isPointerInside,
+                  self.state.phase == .compact
+            else { return }
             self.dwellTask = nil
-            self.setPhase(.expanded, animation: NotchMotion.expanding)
+            self.setPhase(.expanded)
         }
     }
 
     private func scheduleCollapse() {
         self.collapseTask?.cancel()
         self.collapseTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(Self.collapseDelay))
-            guard !Task.isCancelled, let self, !self.isPointerInside, !self.state.isPinned else { return }
+            try? await Task.sleep(for: .seconds(IslandShellMetrics.collapseDelay))
+            guard !Task.isCancelled, let self, !self.isPointerInside else { return }
             self.collapseTask = nil
             self.collapseNow()
         }
@@ -819,15 +749,15 @@ final class NotchBarController: NSObject {
     private func collapseNow() {
         self.dwellTask?.cancel()
         self.dwellTask = nil
-        guard self.state.phase != .dormant else { return }
-        self.setPhase(.dormant, animation: NotchMotion.collapsing)
-        self.scheduleStageSettle()
+        guard self.state.phase == .expanded else { return }
+        self.lastCollapsedAt = Date()
+        self.setPhase(.compact)
     }
 
     /// Single funnel for phase changes so the cached hit-box can never fall out of sync with the
     /// silhouette the user actually sees.
-    private func setPhase(_ phase: NotchPhase, animation: Animation) {
-        withAnimation(animation) {
+    private func setPhase(_ phase: IslandShellPhase) {
+        withAnimation(IslandShellMotion.container(reduceMotion: self.state.reduceMotion)) {
             self.state.phase = phase
         }
         self.refreshHoverZone()
@@ -845,8 +775,6 @@ final class NotchBarController: NSObject {
         self.dwellTask = nil
         self.collapseTask?.cancel()
         self.collapseTask = nil
-        self.settleTask?.cancel()
-        self.settleTask = nil
     }
 
     private func isFullscreen(now: Date = Date()) -> Bool {
@@ -881,8 +809,7 @@ final class NotchBarController: NSObject {
             self.eventMonitors.append(monitor)
         }
         if let monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown], handler: { [weak self] event in
-            guard event.keyCode == 53, let self, self.state.phase != .dormant else { return event }
-            self.setPinned(false)
+            guard event.keyCode == 53, let self, self.state.phase == .expanded else { return event }
             self.collapseNow()
             return nil
         }) {
@@ -891,9 +818,8 @@ final class NotchBarController: NSObject {
     }
 
     private func handleClickOutside() {
-        guard self.state.phase != .dormant else { return }
+        guard self.state.phase == .expanded else { return }
         guard !self.hoverZone.contains(NSEvent.mouseLocation) else { return }
-        self.setPinned(false)
         self.collapseNow()
     }
 

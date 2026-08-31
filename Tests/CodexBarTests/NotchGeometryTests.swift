@@ -89,23 +89,19 @@ struct NotchGeometryTests {
 
     @MainActor
     @Test
-    func `island grows out of the notch as the phase advances`() {
+    func `shell presentation grows inside one fixed stage`() {
         let state = NotchBarState()
-        state.notchSize = CGSize(width: 156, height: 32)
+        state.notchSize = CGSize(width: 156, height: 28)
 
-        state.phase = .dormant
-        #expect(state.totalWidth == 156)
-        #expect(state.islandHeight == 40)
-        #expect(state.shoulderRadius == 0)
-
-        state.phase = .peek
-        #expect(state.totalWidth > 156)
-        #expect(state.islandHeight == 40)
-        #expect(state.shoulderRadius == NotchGeometry.shoulderRadius)
+        state.phase = .compact
+        #expect(state.shellPresentation.totalWidth == 266)
+        #expect(state.shellPresentation.height == 36)
 
         state.phase = .expanded
-        #expect(state.totalWidth >= NotchGeometry.expandedBodyWidth)
-        #expect(state.islandHeight > 32)
+        #expect(state.shellPresentation.totalWidth == 406)
+        #expect(state.shellPresentation.height == 175)
+        #expect(NotchGeometry.stageWidth == 494)
+        #expect(NotchGeometry.stageHeight == 520)
     }
 
     @MainActor

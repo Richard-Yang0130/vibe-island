@@ -197,15 +197,16 @@ struct NotchIslandView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            self.island
+            IslandShellView(
+                presentation: self.state.shellPresentation,
+                reduceMotion: self.state.reduceMotion,
+                actions: IslandShellActions(
+                    toggleExpanded: self.actions.toggleExpanded,
+                    hoverEntered: self.actions.hoverEntered))
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .offset(x: self.state.centerOffset)
-        // Opening overshoots a little; closing is quicker and flatter so the island gets out of the way.
-        .animation(
-            self.state.phase == .dormant ? NotchMotion.collapsing : NotchMotion.expanding,
-            value: self.state.phase)
     }
 
     private var shape: NotchIslandShape {
