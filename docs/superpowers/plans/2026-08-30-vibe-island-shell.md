@@ -17,7 +17,7 @@
 - Create Sources/CodexBar/IslandShellView.swift: shell shape, root composition, content crossfade, and material.
 - Create Sources/CodexBar/IslandShellFixtureViews.swift: compact pet/title/count and expanded fixture rows.
 - Create Sources/CodexBar/IslandShellFont.swift: process-local registration for the independently licensed Departure Mono font.
-- Create Sources/CodexBar/IslandShellLaunchOptions.swift: deterministic compact/expanded/reduced-motion launch arguments.
+- Extend Sources/CodexBar/IslandShellPresentation.swift with deterministic compact/expanded/reduced-motion launch arguments.
 - Create Sources/CodexBar/Resources/Fonts/DepartureMono-Regular.otf: upstream v1.500 font from rektdeckard/departure-mono.
 - Create Sources/CodexBar/Resources/Fonts/DepartureMono-OFL.txt: upstream SIL Open Font License.
 - Modify Sources/CodexBar/NotchIslandView.swift: replace the visible tree with the new shell while leaving old feature models available for later wiring.
@@ -1016,7 +1016,7 @@ Then:
 ### Task 5: Deterministic launch fixtures
 
 **Files:**
-- Create: Sources/CodexBar/IslandShellLaunchOptions.swift
+- Modify: Sources/CodexBar/IslandShellPresentation.swift
 - Modify: Sources/CodexBar/NotchBar.swift
 - Modify: Tests/CodexBarTests/IslandShellPresentationTests.swift
 
@@ -1059,7 +1059,7 @@ Expected: FAIL because IslandShellLaunchOptions is missing.
 
 - [ ] **Step 3: Implement argument parsing**
 
-Create:
+Append to IslandShellPresentation.swift:
 
     struct IslandShellLaunchOptions: Equatable {
         let phase: IslandShellPhase
@@ -1100,7 +1100,7 @@ Expected: all tests pass.
 
 Then:
 
-    git add Sources/CodexBar/IslandShellLaunchOptions.swift Sources/CodexBar/NotchBar.swift Tests/CodexBarTests/IslandShellPresentationTests.swift
+    git add Sources/CodexBar/IslandShellPresentation.swift Sources/CodexBar/NotchBar.swift Tests/CodexBarTests/IslandShellPresentationTests.swift
     git commit -m "Add island shell fixture launch modes"
 
 ### Task 6: Package, inspect, and compare each shell state

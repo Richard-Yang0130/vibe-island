@@ -102,4 +102,29 @@ struct IslandShellPresentationTests {
         #expect(IslandShellFixtureLayout.primaryHeight == 60)
         #expect(IslandShellFixtureLayout.secondaryHeight == 28)
     }
+
+    @Test
+    func `launch options select an exact fixture phase`() {
+        let options = IslandShellLaunchOptions(arguments: [
+            "CodexBar",
+            "--island-fixture-phase",
+            "expanded",
+            "--island-reduce-motion",
+        ])
+
+        #expect(options.phase == .expanded)
+        #expect(options.reduceMotion)
+    }
+
+    @Test
+    func `invalid launch phase leaves the runtime in compact mode`() {
+        let options = IslandShellLaunchOptions(arguments: [
+            "CodexBar",
+            "--island-fixture-phase",
+            "approval",
+        ])
+
+        #expect(options.phase == .compact)
+        #expect(!options.reduceMotion)
+    }
 }

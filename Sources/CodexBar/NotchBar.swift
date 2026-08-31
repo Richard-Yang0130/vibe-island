@@ -507,6 +507,10 @@ final class NotchBarController: NSObject {
         super.init()
         self.configurePanel()
         self.state.notchSize = layout.anchorRect.size
+        let launchOptions = IslandShellLaunchOptions.current
+        self.state.phase = launchOptions.phase
+        self.state.reduceMotion = launchOptions.reduceMotion
+            || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         self.applyPanelFrame()
         self.panel.orderFrontRegardless()
         self.installEventMonitors()

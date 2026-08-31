@@ -118,3 +118,27 @@ struct IslandShellPresentation: Equatable {
         }
     }
 }
+
+struct IslandShellLaunchOptions: Equatable {
+    let phase: IslandShellPhase
+    let reduceMotion: Bool
+
+    init(arguments: [String]) {
+        if let flag = arguments.firstIndex(of: "--island-fixture-phase"),
+           arguments.indices.contains(flag + 1)
+        {
+            self.phase = switch arguments[flag + 1] {
+            case "dormant": .dormant
+            case "expanded": .expanded
+            default: .compact
+            }
+        } else {
+            self.phase = .compact
+        }
+        self.reduceMotion = arguments.contains("--island-reduce-motion")
+    }
+
+    static var current: IslandShellLaunchOptions {
+        IslandShellLaunchOptions(arguments: CommandLine.arguments)
+    }
+}
