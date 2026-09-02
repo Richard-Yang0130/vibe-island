@@ -19,6 +19,7 @@ PY
 
 APP="$TEMP_DIR/CodexBar.app"
 mkdir -p "$APP/Contents"
+APP_NAME=Vibeisland
 BUNDLE_ID=com.steipete.codexbar.test
 MARKETING_VERSION=0.0.0
 BUILD_NUMBER=0
@@ -38,6 +39,9 @@ import sys
 from pathlib import Path
 
 plist = plistlib.loads(Path(sys.argv[1]).read_bytes())
+assert plist["CFBundleName"] == "Vibeisland"
+assert plist["CFBundleDisplayName"] == "Vibeisland"
+assert plist["CFBundleExecutable"] == "CodexBar"
 declarations = plist.get("UTExportedTypeDeclarations")
 assert declarations == [{
     "UTTypeIdentifier": "com.steipete.codexbar.menu-layout-item",
