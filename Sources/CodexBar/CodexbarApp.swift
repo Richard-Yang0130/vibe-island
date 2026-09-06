@@ -24,6 +24,12 @@ enum CodexBarEntryPoint {
         guard CodexBarLaunchMode.resolve(arguments: CommandLine.arguments) == .application else {
             return
         }
+        #if DEBUG
+        if CommandLine.arguments.contains("--keyboard-squad-preview") {
+            IslandCompanionPreview.run()
+            return
+        }
+        #endif
         CodexBarApp.main()
     }
 }

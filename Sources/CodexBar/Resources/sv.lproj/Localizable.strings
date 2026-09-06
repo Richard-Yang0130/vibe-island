@@ -1365,6 +1365,17 @@
 "agent_task_interrupted" = "Task interrupted";
 "agent_task_disconnected" = "Disconnected";
 "agent_task_open" = "Open Task";
+"island_jump_hint" = "Klart — klicka för att hoppa";
+"island_answer_in_terminal" = "Svara i terminalen för att fortsätta.";
+"island_jumped" = "Hoppade till sessionen";
+"island_waiting_answer" = "Väntar på ditt svar";
+"island_denied_from_codexbar" = "Nekad från CodexBar";
+"island_allow_once" = "Tillåt en gång";
+"island_allow_all" = "Tillåt alltid";
+"island_bypass" = "Kringgå";
+"island_approvals_title" = "Besluta behörigheter från ön";
+"island_approvals_subtitle" = "Svara på behörighetsfrågor från Claude Code och Codex i skåran. Gör PermissionRequest-hooken blockerande; om CodexBar inte hinner svara frågar agenten i terminalen som vanligt.";
+"island_approvals_codex_trust" = "Endast Codex: kör /hooks i Codex och lita på den uppdaterade hooken, annars förblir den inaktiv. Codex stöder bara Neka och Tillåt en gång.";
 "agent_task_none" = "No active task";
 "agent_task_quota" = "Quota";
 "agent_task_privacy" = "Task status keeps only local session identity, state, project path, and timestamps. It does not store prompts, commands, or model replies.";

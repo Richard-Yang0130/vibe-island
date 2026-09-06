@@ -5,6 +5,16 @@ import Testing
 
 struct AgentTaskFocusResolverTests {
     @Test
+    func `codex session id becomes a native thread link`() {
+        #expect(
+            AgentTaskFocusResolver.codexThreadURL(
+                provider: .codex,
+                sessionID: "01a05bdb-e825-7ba1-9a24-d6ca40f0b96d")?.absoluteString
+                == "codex://threads/01a05bdb-e825-7ba1-9a24-d6ca40f0b96d")
+        #expect(AgentTaskFocusResolver.codexThreadURL(provider: .claude, sessionID: "x") == nil)
+    }
+
+    @Test
     func `exact session id wins over path fallback`() {
         let event = AgentTaskEvent.fixture(
             kind: .approvalRequested,

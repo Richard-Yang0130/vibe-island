@@ -1,6 +1,16 @@
 import CodexBarCore
+import Foundation
 
 enum AgentTaskFocusResolver {
+    static func codexThreadURL(provider: AgentTaskProvider, sessionID: String) -> URL? {
+        guard provider == .codex else { return nil }
+        var components = URLComponents()
+        components.scheme = "codex"
+        components.host = "threads"
+        components.path = "/\(sessionID)"
+        return components.url
+    }
+
     static func resolve(event: AgentTaskEvent, sessions: [AgentSession]) -> AgentSession? {
         let provider = self.sessionProvider(for: event.provider)
         let matchingProvider = sessions.filter { $0.provider == provider }

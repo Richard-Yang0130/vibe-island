@@ -25,6 +25,35 @@ final class AgentTaskHookSettingsModel {
         self.settings.agentTaskStatusEnabled
     }
 
+    var approvalsEnabled: Bool {
+        self.settings.agentTaskApprovalsEnabled
+    }
+
+    /// The hook document differs depending on whether approvals are on, so the installer is built
+    /// against the current setting rather than captured once at init.
+    private var currentInstaller: AgentTaskHookInstaller {
+        AgentTaskHookInstaller(
+            homeDirectory: self.installer.homeDirectory,
+            helperURL: self.installer.helperURL,
+            approvalsEnabled: self.settings.agentTaskApprovalsEnabled)
+    }
+
+    /// Turning approvals on or off rewrites the `PermissionRequest` handler, so the hooks have to
+    /// be reinstalled for the change to reach the agents.
+    func setApprovalsEnabled(_ enabled: Bool) {
+        self.performChange {
+            self.settings.agentTaskApprovalsEnabled = enabled
+            guard self.settings.agentTaskStatusEnabled else {
+                self.refresh()
+                return
+            }
+            for provider in Set(Self.detectedProviders()) {
+                self.install(provider)
+            }
+            self.refresh()
+        }
+    }
+
     func health(for provider: AgentTaskProvider) -> AgentTaskHookHealth {
         self.healthCenter.health(for: provider)
     }
@@ -36,7 +65,7 @@ final class AgentTaskHookSettingsModel {
                 self.healthCenter.set(.notDetected, for: provider)
                 continue
             }
-            switch self.installer.inspect(provider).document {
+            switch self.currentInstaller.inspect(provider).document {
             case .notInstalled:
                 self.healthCenter.set(.notConfigured, for: provider)
             case .needsRepair:
@@ -60,7 +89,7 @@ final class AgentTaskHookSettingsModel {
                 self.install(provider)
             }
             self.settings.agentTaskStatusEnabled = self.detectedProviders.contains { provider in
-                self.installer.inspect(provider).document == .installed
+                self.currentInstaller.inspect(provider).document == .installed
             }
         }
     }
@@ -70,7 +99,7 @@ final class AgentTaskHookSettingsModel {
             self.settings.agentTaskStatusEnabled = false
             for provider in AgentTaskProvider.allCases {
                 do {
-                    try self.installer.remove(provider)
+                    try self.currentInstaller.remove(provider)
                 } catch {
                     self.healthCenter.set(.needsRepair(error.localizedDescription), for: provider)
                 }
@@ -82,13 +111,13 @@ final class AgentTaskHookSettingsModel {
     func repair(_ provider: AgentTaskProvider) {
         self.performChange {
             self.install(provider)
-            self.settings.agentTaskStatusEnabled = self.installer.inspect(provider).document == .installed
+            self.settings.agentTaskStatusEnabled = self.currentInstaller.inspect(provider).document == .installed
         }
     }
 
     private func install(_ provider: AgentTaskProvider) {
         do {
-            try self.installer.install(provider)
+            try self.currentInstaller.install(provider)
             self.healthCenter.set(.installedAwaitingEvent, for: provider)
         } catch {
             self.healthCenter.set(.needsRepair(error.localizedDescription), for: provider)
@@ -139,6 +168,23 @@ struct AgentTaskHookSettingsSection: View {
                     subtitle: L("agent_task_status_subtitle"))
             }
             .disabled(self.model.isWorking)
+
+            if self.model.isEnabled {
+                Toggle(
+                    isOn: Binding(
+                        get: { self.model.approvalsEnabled },
+                        set: { self.model.setApprovalsEnabled($0) }))
+                {
+                    SettingsRowLabel(
+                        L("island_approvals_title"),
+                        subtitle: L("island_approvals_subtitle"))
+                }
+                .disabled(self.model.isWorking)
+
+                if self.model.approvalsEnabled {
+                    SettingsSectionFooter(L("island_approvals_codex_trust"))
+                }
+            }
 
             ForEach(AgentTaskProvider.allCases, id: \.rawValue) { provider in
                 LabeledContent {

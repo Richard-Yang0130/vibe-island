@@ -20,7 +20,7 @@ struct IslandShellInteractionPolicyTests {
             now: collapsedAt.addingTimeInterval(0.20),
             collapsedAt: collapsedAt))
         #expect(IslandShellInteractionPolicy.canEnter(
-            now: collapsedAt.addingTimeInterval(0.25),
+            now: collapsedAt.addingTimeInterval(0.31),
             collapsedAt: collapsedAt))
     }
 }

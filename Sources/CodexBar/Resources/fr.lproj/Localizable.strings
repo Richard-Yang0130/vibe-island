@@ -1366,6 +1366,17 @@
 "agent_task_interrupted" = "Task interrupted";
 "agent_task_disconnected" = "Disconnected";
 "agent_task_open" = "Open Task";
+"island_jump_hint" = "Terminé — cliquez pour y accéder";
+"island_answer_in_terminal" = "Répondez dans le terminal pour continuer.";
+"island_jumped" = "Accès à la session effectué";
+"island_waiting_answer" = "En attente de votre réponse";
+"island_denied_from_codexbar" = "Refusé depuis CodexBar";
+"island_allow_once" = "Autoriser une fois";
+"island_allow_all" = "Toujours autoriser";
+"island_bypass" = "Contourner";
+"island_approvals_title" = "Décider des permissions depuis l'îlot";
+"island_approvals_subtitle" = "Répondez aux demandes de permission de Claude Code et Codex dans l'encoche. Le hook PermissionRequest devient bloquant ; si CodexBar ne peut pas répondre à temps, l'agent demande dans le terminal comme d'habitude.";
+"island_approvals_codex_trust" = "Codex uniquement : exécutez /hooks dans Codex et approuvez le hook mis à jour, sinon il reste inactif. Codex ne gère que Refuser et Autoriser une fois.";
 "agent_task_none" = "No active task";
 "agent_task_quota" = "Quota";
 "agent_task_privacy" = "Task status keeps only local session identity, state, project path, and timestamps. It does not store prompts, commands, or model replies.";

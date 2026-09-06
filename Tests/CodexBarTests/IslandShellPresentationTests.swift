@@ -18,38 +18,35 @@ struct IslandShellPresentationTests {
     }
 
     @Test
-    func `physical notch compact phase exactly matches the hardware anchor`() {
+    func `physical notch compact scene exactly matches the hardware anchor`() {
         let anchor = CGSize(width: 156, height: 28)
         let compact = IslandShellPresentation(
-            phase: .compact,
+            scene: .compact,
             anchorSize: anchor,
-            hasPhysicalNotch: true,
-            fixture: .reference)
+            hasPhysicalNotch: true)
         let expanded = IslandShellPresentation(
-            phase: .expanded,
+            scene: .overview,
             anchorSize: anchor,
-            hasPhysicalNotch: true,
-            fixture: .reference)
+            hasPhysicalNotch: true)
 
         #expect(compact.bodyWidth == 156)
         #expect(compact.totalWidth == 156)
         #expect(compact.height == 28)
         #expect(compact.shoulderRadius == 0)
         #expect(compact.bottomRadius == 0)
-        #expect(expanded.bodyWidth == 380)
-        #expect(expanded.totalWidth == 406)
-        #expect(expanded.height == 175)
-        #expect(expanded.bottomRadius == 14)
+        #expect(expanded.bodyWidth == 430)
+        #expect(expanded.totalWidth == 456)
+        #expect(expanded.height == IslandSceneMetrics.height(.overview, cardCount: 0))
+        #expect(expanded.bottomRadius == 22)
         #expect(expanded.shoulderRadius == 13)
     }
 
     @Test
-    func `notchless compact phase retains the simulated anchor shell`() {
+    func `notchless compact scene retains the simulated anchor shell`() {
         let compact = IslandShellPresentation(
-            phase: .compact,
+            scene: .compact,
             anchorSize: CGSize(width: 84, height: 20),
-            hasPhysicalNotch: false,
-            fixture: .reference)
+            hasPhysicalNotch: false)
 
         #expect(compact.bodyWidth == 264)
         #expect(compact.totalWidth == 290)
@@ -59,11 +56,10 @@ struct IslandShellPresentationTests {
     }
 
     @Test
-    func `dormant phase hugs the physical anchor`() {
+    func `dormant scene hugs the physical anchor`() {
         let presentation = IslandShellPresentation(
-            phase: .dormant,
-            anchorSize: CGSize(width: 156, height: 28),
-            fixture: .reference)
+            scene: .dormant,
+            anchorSize: CGSize(width: 156, height: 28))
 
         #expect(presentation.bodyWidth == 156)
         #expect(presentation.totalWidth == 156)
@@ -76,14 +72,14 @@ struct IslandShellPresentationTests {
     func `standard motion matches the public shell timing`() {
         let profile = IslandShellMotion.profile(reduceMotion: false)
 
-        #expect(profile.containerDuration == 0.50)
-        #expect(profile.radiusDuration == 0.40)
-        #expect(profile.opacityDuration == 0.25)
-        #expect(profile.blurDuration == 0.30)
-        #expect(profile.scaleDuration == 0.35)
+        #expect(profile.containerDuration == 0.30)
+        #expect(profile.radiusDuration == 0.30)
+        #expect(profile.opacityDuration == 0.18)
+        #expect(profile.blurDuration == 0.14)
+        #expect(profile.scaleDuration == 0.14)
         #expect(profile.contentDelay == 0.06)
-        #expect(profile.blurRadius == 6)
-        #expect(profile.hiddenScale == 0.96)
+        #expect(profile.blurRadius == 0)
+        #expect(profile.hiddenScale == 1)
     }
 
     @Test
@@ -137,41 +133,52 @@ struct IslandShellPresentationTests {
     }
 
     @Test
-    func `fixture layout uses the measured overview dimensions`() {
-        #expect(IslandShellFixtureLayout.compactSpacing == 8)
-        #expect(IslandShellFixtureLayout.compactPetSize == 20)
-        #expect(IslandShellFixtureLayout.compactSideWidth == 90)
-        #expect(IslandShellFixtureLayout.horizontalPadding == 12)
-        #expect(IslandShellFixtureLayout.verticalPadding == 10)
-        #expect(IslandShellFixtureLayout.usageHeight == 15)
-        #expect(IslandShellFixtureLayout.primaryHeight == 60)
-        #expect(IslandShellFixtureLayout.secondaryHeight == 28)
+    func `pane layout keeps the prototype density`() {
+        #expect(IslandLayout.paneHorizontalPadding == 16)
+        #expect(IslandLayout.paneTopPadding == 11)
+        #expect(IslandLayout.paneBottomPadding == 12)
+        #expect(IslandLayout.paneSpacing == 8)
+        #expect(IslandLayout.usageBottomPadding == 9)
+        #expect(IslandLayout.cardRadius == 10)
+        #expect(IslandLayout.chipRadius == 6)
     }
 
     @Test
-    func `launch options select an exact fixture phase`() {
+    func `launch options select an exact fixture scene`() {
         let options = IslandShellLaunchOptions(arguments: [
             "CodexBar",
-            "--island-fixture-phase",
-            "expanded",
+            "--island-fixture-scene",
+            "approval",
             "--island-reduce-motion",
         ])
 
-        #expect(options.phase == .expanded)
+        #expect(options.scene == .approval)
         #expect(options.reduceMotion)
         #expect(options.isFixture)
         #expect(options.indicatorScenario == .running)
     }
 
     @Test
-    func `invalid launch phase leaves the runtime in compact mode`() {
+    func `the pre-scene expanded flag still resolves to the overview`() {
         let options = IslandShellLaunchOptions(arguments: [
             "CodexBar",
             "--island-fixture-phase",
-            "approval",
+            "expanded",
         ])
 
-        #expect(options.phase == .compact)
+        #expect(options.scene == .overview)
+        #expect(options.isFixture)
+    }
+
+    @Test
+    func `an unknown scene name leaves the runtime in compact mode`() {
+        let options = IslandShellLaunchOptions(arguments: [
+            "CodexBar",
+            "--island-fixture-scene",
+            "not-a-scene",
+        ])
+
+        #expect(options.scene == .compact)
         #expect(!options.reduceMotion)
         #expect(options.isFixture)
     }

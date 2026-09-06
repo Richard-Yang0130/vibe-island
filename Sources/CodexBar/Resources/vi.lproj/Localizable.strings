@@ -1367,6 +1367,17 @@
 "agent_task_interrupted" = "Task interrupted";
 "agent_task_disconnected" = "Disconnected";
 "agent_task_open" = "Open Task";
+"island_jump_hint" = "Xong — nhấp để chuyển đến";
+"island_answer_in_terminal" = "Trả lời trong terminal để tiếp tục.";
+"island_jumped" = "Đã chuyển đến phiên";
+"island_waiting_answer" = "Đang chờ bạn trả lời";
+"island_denied_from_codexbar" = "Đã từ chối từ CodexBar";
+"island_allow_once" = "Cho phép một lần";
+"island_allow_all" = "Luôn cho phép";
+"island_bypass" = "Bỏ qua";
+"island_approvals_title" = "Quyết định quyền từ island";
+"island_approvals_subtitle" = "Trả lời yêu cầu quyền của Claude Code và Codex ngay tại notch. Hook PermissionRequest sẽ chặn; nếu CodexBar không kịp trả lời, agent sẽ hỏi trong terminal như thường lệ.";
+"island_approvals_codex_trust" = "Chỉ Codex: chạy /hooks trong Codex và tin cậy hook đã cập nhật, nếu không nó sẽ không hoạt động. Codex chỉ hỗ trợ Từ chối và Cho phép một lần.";
 "agent_task_none" = "No active task";
 "agent_task_quota" = "Quota";
 "agent_task_privacy" = "Task status keeps only local session identity, state, project path, and timestamps. It does not store prompts, commands, or model replies.";

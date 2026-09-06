@@ -1367,6 +1367,17 @@
 "agent_task_interrupted" = "Task interrupted";
 "agent_task_disconnected" = "Disconnected";
 "agent_task_open" = "Open Task";
+"island_jump_hint" = "完了 — クリックで移動";
+"island_answer_in_terminal" = "続けるにはターミナルで回答してください。";
+"island_jumped" = "セッションに移動しました";
+"island_waiting_answer" = "回答を待っています";
+"island_denied_from_codexbar" = "CodexBar で拒否しました";
+"island_allow_once" = "1 回だけ許可";
+"island_allow_all" = "常に許可";
+"island_bypass" = "バイパス";
+"island_approvals_title" = "ノッチで権限を判断";
+"island_approvals_subtitle" = "Claude Code と Codex の権限リクエストをノッチで回答します。PermissionRequest フックがブロッキングになります。CodexBar が時間内に回答できない場合は、通常どおりターミナルで確認されます。";
+"island_approvals_codex_trust" = "Codex のみ: Codex で /hooks を実行し更新されたフックを信頼してください。しないと無効のままです。Codex は「拒否」と「1 回だけ許可」のみ対応します。";
 "agent_task_none" = "No active task";
 "agent_task_quota" = "Quota";
 "agent_task_privacy" = "Task status keeps only local session identity, state, project path, and timestamps. It does not store prompts, commands, or model replies.";

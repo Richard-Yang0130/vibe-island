@@ -1366,6 +1366,17 @@
 "agent_task_interrupted" = "Task interrupted";
 "agent_task_disconnected" = "Disconnected";
 "agent_task_open" = "Open Task";
+"island_jump_hint" = "Готово — натисніть, щоб перейти";
+"island_answer_in_terminal" = "Відповідайте в терміналі, щоб продовжити.";
+"island_jumped" = "Перехід до сесії виконано";
+"island_waiting_answer" = "Очікує вашої відповіді";
+"island_denied_from_codexbar" = "Відхилено в CodexBar";
+"island_allow_once" = "Дозволити один раз";
+"island_allow_all" = "Завжди дозволяти";
+"island_bypass" = "Обійти";
+"island_approvals_title" = "Рішення щодо дозволів на острові";
+"island_approvals_subtitle" = "Відповідайте на запити дозволів Claude Code і Codex у вирізі. Хук PermissionRequest стане блокувальним; якщо CodexBar не встигне відповісти, агент запитає в терміналі як зазвичай.";
+"island_approvals_codex_trust" = "Лише Codex: виконайте /hooks у Codex і довіртеся оновленому хуку, інакше він лишиться неактивним. Codex підтримує тільки «Відхилити» і «Дозволити один раз».";
 "agent_task_none" = "No active task";
 "agent_task_quota" = "Quota";
 "agent_task_privacy" = "Task status keeps only local session identity, state, project path, and timestamps. It does not store prompts, commands, or model replies.";

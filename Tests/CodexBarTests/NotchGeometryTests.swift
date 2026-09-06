@@ -93,14 +93,14 @@ struct NotchGeometryTests {
         let state = NotchBarState()
         state.notchSize = CGSize(width: 156, height: 28)
 
-        state.phase = .compact
+        state.scene = .compact
         #expect(state.shellPresentation.totalWidth == 156)
         #expect(state.shellPresentation.height == 28)
 
-        state.phase = .expanded
-        #expect(state.shellPresentation.totalWidth == 406)
-        #expect(state.shellPresentation.height == 175)
-        #expect(NotchGeometry.stageWidth == 494)
+        state.scene = .overview
+        #expect(state.shellPresentation.totalWidth == 456)
+        #expect(state.shellPresentation.height == IslandSceneMetrics.height(.overview, cardCount: 0))
+        #expect(NotchGeometry.stageWidth == 560)
         #expect(NotchGeometry.stageHeight == 520)
     }
 

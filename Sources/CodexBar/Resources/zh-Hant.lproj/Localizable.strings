@@ -1397,6 +1397,17 @@
 "agent_task_interrupted" = "Task interrupted";
 "agent_task_disconnected" = "Disconnected";
 "agent_task_open" = "Open Task";
+"island_jump_hint" = "已完成 — 點擊跳回終端機";
+"island_answer_in_terminal" = "回到終端機回答即可繼續。";
+"island_jumped" = "已跳回工作階段";
+"island_waiting_answer" = "等待你回答";
+"island_denied_from_codexbar" = "已在 CodexBar 中拒絕";
+"island_allow_once" = "允許一次";
+"island_allow_all" = "一律允許";
+"island_bypass" = "放棄管控";
+"island_approvals_title" = "在島上做授權決策";
+"island_approvals_subtitle" = "直接在瀏海裡回應 Claude Code 與 Codex 的授權請求。這會讓 PermissionRequest hook 變為阻塞式；若 CodexBar 未能及時回答，agent 會照常回到終端機詢問。";
+"island_approvals_codex_trust" = "僅 Codex：需在 Codex 中執行 /hooks 並信任更新後的 hook，否則不會生效。Codex 僅支援「拒絕」與「允許一次」。";
 "agent_task_none" = "No active task";
 "agent_task_quota" = "Quota";
 "agent_task_privacy" = "Task status keeps only local session identity, state, project path, and timestamps. It does not store prompts, commands, or model replies.";

@@ -25,28 +25,28 @@ enum IslandShellMotion {
                 hiddenScale: 1)
         }
         return IslandShellMotionProfile(
-            containerDuration: 0.50,
-            radiusDuration: 0.40,
-            opacityDuration: 0.25,
-            blurDuration: 0.30,
-            scaleDuration: 0.35,
+            containerDuration: 0.30,
+            radiusDuration: 0.30,
+            opacityDuration: 0.18,
+            blurDuration: 0.14,
+            scaleDuration: 0.14,
             contentDelay: 0.06,
-            blurRadius: 6,
-            hiddenScale: 0.96)
+            blurRadius: 0,
+            hiddenScale: 1)
     }
 
     static func container(reduceMotion: Bool) -> Animation {
         reduceMotion
             ? .easeOut(duration: 0.14)
-            : .timingCurve(0.175, 0.885, 0.32, 1.1, duration: 0.50)
+            : .timingCurve(0.2, 0.8, 0.2, 1, duration: 0.30)
     }
 
     static func radius(reduceMotion: Bool) -> Animation {
-        .easeOut(duration: reduceMotion ? 0.14 : 0.40)
+        .easeOut(duration: reduceMotion ? 0.14 : 0.30)
     }
 
     static func opacity(reduceMotion: Bool) -> Animation {
-        .easeOut(duration: reduceMotion ? 0.14 : 0.25)
+        .easeOut(duration: reduceMotion ? 0.14 : 0.18)
             .delay(reduceMotion ? 0 : 0.06)
     }
 

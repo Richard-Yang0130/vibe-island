@@ -1368,6 +1368,17 @@
 "agent_task_interrupted" = "Task interrupted";
 "agent_task_disconnected" = "Disconnected";
 "agent_task_open" = "Open Task";
+"island_jump_hint" = "Tamamlandı — atlamak için tıklayın";
+"island_answer_in_terminal" = "Devam etmek için terminalde yanıtlayın.";
+"island_jumped" = "Oturuma atlandı";
+"island_waiting_answer" = "Yanıtınız bekleniyor";
+"island_denied_from_codexbar" = "CodexBar'dan reddedildi";
+"island_allow_once" = "Bir kez izin ver";
+"island_allow_all" = "Her zaman izin ver";
+"island_bypass" = "Atla";
+"island_approvals_title" = "İzinlere adadan karar ver";
+"island_approvals_subtitle" = "Claude Code ve Codex izin isteklerini çentikte yanıtlayın. PermissionRequest kancasını engelleyici yapar; CodexBar zamanında yanıtlayamazsa aracı her zamanki gibi terminalde sorar.";
+"island_approvals_codex_trust" = "Yalnızca Codex: Codex'te /hooks çalıştırıp güncellenen kancaya güvenin, aksi halde etkisiz kalır. Codex yalnızca Reddet ve Bir kez izin ver destekler.";
 "agent_task_none" = "No active task";
 "agent_task_quota" = "Quota";
 "agent_task_privacy" = "Task status keeps only local session identity, state, project path, and timestamps. It does not store prompts, commands, or model replies.";

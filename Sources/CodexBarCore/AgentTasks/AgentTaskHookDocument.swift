@@ -17,29 +17,63 @@ public enum AgentTaskHookDocument {
     ]
     public static let claudeEvents = codexEvents + ["StopFailure"]
 
+    public static let permissionRequestEvent = "PermissionRequest"
+
     public static func command(helperPath: String, provider: AgentTaskProvider) -> String {
         "\(self.shellQuote(helperPath)) agent-event --provider \(provider.rawValue) --managed-by \(self.ownerMarker)"
+    }
+
+    /// The blocking variant, registered only when the user opts into island approvals.
+    public static func approvalCommand(helperPath: String, provider: AgentTaskProvider) -> String {
+        "\(self.shellQuote(helperPath)) agent-approval --provider \(provider.rawValue) --managed-by \(self.ownerMarker)"
+    }
+
+    /// The handler written for one event.
+    ///
+    /// Every event except `PermissionRequest` stays fire-and-forget telemetry: `async` so it can
+    /// never delay a tool call. `PermissionRequest` has to run synchronously, because both agents
+    /// document that a background hook cannot approve or deny anything — registering it as `async`
+    /// is exactly why approvals did not work before.
+    static func handler(
+        event: String,
+        helperPath: String,
+        provider: AgentTaskProvider,
+        approvalsEnabled: Bool)
+        -> [String: Any]
+    {
+        guard approvalsEnabled, event == self.permissionRequestEvent else {
+            return [
+                "type": "command",
+                "command": self.command(helperPath: helperPath, provider: provider),
+                "timeout": 1,
+                "async": true,
+            ]
+        }
+        return [
+            "type": "command",
+            "command": self.approvalCommand(helperPath: helperPath, provider: provider),
+            "timeout": AgentTaskApprovalTimeouts.hookTimeoutSeconds,
+        ]
     }
 
     public static func install(
         provider: AgentTaskProvider,
         data: Data,
-        helperPath: String)
+        helperPath: String,
+        approvalsEnabled: Bool = false)
         throws -> Data
     {
         var root = try self.root(from: data)
         var hooks = root["hooks"] as? [String: Any] ?? [:]
-        let command = self.command(helperPath: helperPath, provider: provider)
         for event in self.events(for: provider) {
             var groups = self.removingManagedHandlers(from: hooks[event] as? [[String: Any]] ?? [])
             groups.append([
                 "matcher": "",
-                "hooks": [[
-                    "type": "command",
-                    "command": command,
-                    "timeout": 1,
-                    "async": true,
-                ]],
+                "hooks": [self.handler(
+                    event: event,
+                    helperPath: helperPath,
+                    provider: provider,
+                    approvalsEnabled: approvalsEnabled)],
             ])
             hooks[event] = groups
         }
@@ -67,23 +101,52 @@ public enum AgentTaskHookDocument {
         return try JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted, .sortedKeys])
     }
 
+    /// Whether our managed handlers are present at all, ignoring which mode `PermissionRequest`
+    /// is in.
+    ///
+    /// Approval-mode drift is a repair prompt, not a reason to consider the hooks missing: the
+    /// telemetry handlers still work, so status lights and quota must keep rendering.
+    public static func hasManagedHooks(provider: AgentTaskProvider, data: Data) -> Bool {
+        guard let root = try? self.root(from: data),
+              let hooks = root["hooks"] as? [String: Any]
+        else { return false }
+        return self.events(for: provider).allSatisfy { event in
+            guard let groups = hooks[event] as? [[String: Any]] else { return false }
+            return groups.contains { group in
+                (group["hooks"] as? [[String: Any]])?.contains(where: self.isManagedHandler) == true
+            }
+        }
+    }
+
     public static func inspect(
         provider: AgentTaskProvider,
-        data: Data) -> AgentTaskHookDocumentStatus
+        data: Data,
+        approvalsEnabled: Bool = false) -> AgentTaskHookDocumentStatus
     {
         guard let root = try? self.root(from: data),
               let hooks = root["hooks"] as? [String: Any]
         else { return .notInstalled }
 
         let events = self.events(for: provider)
+        var approvalModeMatches = true
         let installed = events.filter { event in
             guard let groups = hooks[event] as? [[String: Any]] else { return false }
-            return groups.contains { group in
-                (group["hooks"] as? [[String: Any]])?.contains(where: self.isManagedHandler) == true
+            let handlers = groups.compactMap { $0["hooks"] as? [[String: Any]] }.flatMap(\.self)
+            let managed = handlers.filter(self.isManagedHandler)
+            guard !managed.isEmpty else { return false }
+            // Toggling the approvals setting changes the PermissionRequest handler in place, so a
+            // document installed under the other mode has to report as repairable rather than
+            // silently keeping the stale (and, for approvals, non-functional) handler.
+            if event == self.permissionRequestEvent,
+               managed.contains(where: self.isApprovalHandler) != approvalsEnabled
+            {
+                approvalModeMatches = false
             }
+            return true
         }
         if installed.isEmpty { return .notInstalled }
-        return installed.count == events.count ? .installed : .needsRepair
+        guard installed.count == events.count, approvalModeMatches else { return .needsRepair }
+        return .installed
     }
 
     private static func removingManagedHandlers(from groups: [[String: Any]]) -> [[String: Any]] {
@@ -100,11 +163,18 @@ public enum AgentTaskHookDocument {
     private static func isManagedHandler(_ handler: [String: Any]) -> Bool {
         guard let command = handler["command"] as? String else { return false }
         let tokens = command.split(whereSeparator: \Character.isWhitespace).map(String.init)
-        guard tokens.contains("agent-event"),
+        guard tokens.contains("agent-event") || tokens.contains("agent-approval"),
               let markerIndex = tokens.firstIndex(of: "--managed-by"),
               tokens.indices.contains(markerIndex + 1)
         else { return false }
         return tokens[markerIndex + 1] == self.ownerMarker
+    }
+
+    /// True when the handler is the blocking approval variant rather than telemetry.
+    private static func isApprovalHandler(_ handler: [String: Any]) -> Bool {
+        guard let command = handler["command"] as? String else { return false }
+        return command.split(whereSeparator: \Character.isWhitespace).map(String.init)
+            .contains("agent-approval")
     }
 
     private static func root(from data: Data) throws -> [String: Any] {

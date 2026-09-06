@@ -246,6 +246,7 @@ final class UsageStore {
         TimeInterval) async throws -> OpenAIDashboardSnapshot)?
     @ObservationIgnored var _test_codexCreditsLoaderOverride: (@MainActor () async throws -> CreditsSnapshot)?
     @ObservationIgnored var _test_codexResetCreditsFetcherOverride: CodexResetCreditsFetcher?
+    @ObservationIgnored var _test_widgetSnapshotLoadOverride: (@Sendable () -> WidgetSnapshot?)?
     @ObservationIgnored var _test_widgetSnapshotSaveOverride: (@MainActor (WidgetSnapshot) async -> Void)?
     @ObservationIgnored var _test_providerRefreshOverride: (@MainActor (UsageProvider) async -> Void)?
     @ObservationIgnored var _test_providerFetchOutcomeOverride: (@MainActor (
@@ -269,6 +270,7 @@ final class UsageStore {
         TimeInterval) async throws -> Void)?
     @ObservationIgnored var widgetSnapshotPersistTask: Task<Void, Never>?
     @ObservationIgnored var lastQueuedWidgetSnapshot: WidgetSnapshot?
+    @ObservationIgnored var widgetSnapshotLoadInProgress = false
     @ObservationIgnored var widgetUsagePreservationBlockedProviders: Set<UsageProvider> = []
 
     @ObservationIgnored let codexFetcher: UsageFetcher

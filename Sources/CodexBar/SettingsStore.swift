@@ -528,6 +528,8 @@ extension SettingsStore {
         let appLanguageRaw = userDefaults.string(forKey: "appLanguage")
         let agentSessionsEnabled = userDefaults.object(forKey: "agentSessionsEnabled") as? Bool ?? false
         let agentTaskStatusEnabled = userDefaults.object(forKey: "agentTaskStatusEnabled") as? Bool ?? false
+        let agentTaskApprovalsEnabled = userDefaults
+            .object(forKey: "agentTaskApprovalsEnabled") as? Bool ?? false
         let agentSessionLabelStyleRaw = userDefaults.string(forKey: "agentSessionLabelStyle")
             ?? AgentSessionLabelStyle.project.rawValue
         let agentSessionsManualHosts = userDefaults.string(forKey: "agentSessionsManualHosts") ?? ""
@@ -605,6 +607,7 @@ extension SettingsStore {
             terminalAppRaw: userDefaults.string(forKey: "terminalApp"),
             agentSessionsEnabled: agentSessionsEnabled,
             agentTaskStatusEnabled: agentTaskStatusEnabled,
+            agentTaskApprovalsEnabled: agentTaskApprovalsEnabled,
             agentSessionLabelStyleRaw: agentSessionLabelStyleRaw,
             agentSessionsManualHosts: agentSessionsManualHosts,
             preferredCurrencyCode: preferredCurrencyCode)

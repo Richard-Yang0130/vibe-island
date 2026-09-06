@@ -1370,6 +1370,17 @@
 "agent_task_interrupted" = "Task interrupted";
 "agent_task_disconnected" = "Disconnected";
 "agent_task_open" = "Open Task";
+"island_jump_hint" = "Selesai — klik untuk melompat";
+"island_answer_in_terminal" = "Jawab di terminal untuk melanjutkan.";
+"island_jumped" = "Melompat ke sesi";
+"island_waiting_answer" = "Menunggu jawaban Anda";
+"island_denied_from_codexbar" = "Ditolak dari CodexBar";
+"island_allow_once" = "Izinkan sekali";
+"island_allow_all" = "Selalu izinkan";
+"island_bypass" = "Lewati";
+"island_approvals_title" = "Putuskan izin dari island";
+"island_approvals_subtitle" = "Jawab permintaan izin Claude Code dan Codex di notch. Membuat hook PermissionRequest memblokir; jika CodexBar tidak sempat menjawab, agen bertanya di terminal seperti biasa.";
+"island_approvals_codex_trust" = "Khusus Codex: jalankan /hooks di Codex dan percayai hook yang diperbarui, jika tidak akan tetap nonaktif. Codex hanya mendukung Tolak dan Izinkan sekali.";
 "agent_task_none" = "No active task";
 "agent_task_quota" = "Quota";
 "agent_task_privacy" = "Task status keeps only local session identity, state, project path, and timestamps. It does not store prompts, commands, or model replies.";

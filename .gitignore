@@ -15,6 +15,9 @@ CodexBar.app/
 CodexBar *.app/
 CodexBar_*.app/
 Codexbar.app/
+Vibeisland.app/
+build/
+.superpowers/
 # Release artifacts
 *.ipa
 *.dSYM*
@@ -42,6 +45,8 @@ __pycache__/
 docs/*-analysis.md
 docs/.viewport-audit/
 docs/.astro/
+docs/keyboard-squad-acceptance/*.log
+docs/keyboard-squad-acceptance/startup-block-before-fix.txt
 
 # Swift Package Manager metadata (leave sources tracked)
 # Packages/

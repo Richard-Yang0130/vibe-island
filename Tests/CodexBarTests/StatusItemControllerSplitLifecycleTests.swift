@@ -102,6 +102,43 @@ struct StatusItemControllerSplitLifecycleTests {
     }
 
     @Test
+    func `store menu changes refresh the notch content`() throws {
+        let (_, controller) = try self.makeSplitController()
+        defer { controller.releaseStatusItemsForTesting() }
+        var refreshCount = 0
+        controller.onNotchRefreshForTesting = { refreshCount += 1 }
+
+        controller.handleObservedStoreMenuChange()
+
+        #expect(refreshCount == 1)
+    }
+
+    @Test
+    func `island quota falls back when the selected provider has no metrics`() throws {
+        let (settings, controller) = try self.makeSplitController()
+        defer { controller.releaseStatusItemsForTesting() }
+        settings.selectedMenuProvider = .claude
+        controller.store._setSnapshotForTesting(nil, provider: .claude)
+        controller.store._setSnapshotForTesting(
+            UsageSnapshot(
+                primary: nil,
+                secondary: RateWindow(
+                    usedPercent: 82,
+                    windowMinutes: 7 * 24 * 60,
+                    resetsAt: Date().addingTimeInterval(60 * 60),
+                    resetDescription: nil),
+                updatedAt: Date()),
+            provider: .codex)
+
+        let usage = controller.islandUsageCard(
+            preferredProvider: .claude,
+            enabledProviders: [.claude, .codex])
+
+        #expect(usage.provider == .codex)
+        #expect(usage.model?.metrics.isEmpty == false)
+    }
+
+    @Test
     func `merged mode removes split provider status items`() throws {
         let (settings, controller) = try self.makeSplitController()
         defer { controller.releaseStatusItemsForTesting() }

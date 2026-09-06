@@ -1369,6 +1369,17 @@
 "agent_task_interrupted" = "Task interrupted";
 "agent_task_disconnected" = "Disconnected";
 "agent_task_open" = "Open Task";
+"island_jump_hint" = "Fet — fes clic per saltar-hi";
+"island_answer_in_terminal" = "Respon al terminal per continuar.";
+"island_jumped" = "S'ha saltat a la sessió";
+"island_waiting_answer" = "Esperant la teva resposta";
+"island_denied_from_codexbar" = "Denegat des de CodexBar";
+"island_allow_once" = "Permet un cop";
+"island_allow_all" = "Permet sempre";
+"island_bypass" = "Omet";
+"island_approvals_title" = "Decideix permisos des de l'illa";
+"island_approvals_subtitle" = "Respon les sol·licituds de permisos de Claude Code i Codex al notch. Fa que el hook PermissionRequest sigui bloquejant; si CodexBar no pot respondre a temps, l'agent pregunta al terminal com sempre.";
+"island_approvals_codex_trust" = "Només Codex: executa /hooks a Codex i confia en el hook actualitzat, si no restarà inactiu. Codex només admet Denega i Permet un cop.";
 "agent_task_none" = "No active task";
 "agent_task_quota" = "Quota";
 "agent_task_privacy" = "Task status keeps only local session identity, state, project path, and timestamps. It does not store prompts, commands, or model replies.";

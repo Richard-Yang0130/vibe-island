@@ -124,7 +124,9 @@ final class StatusItemController: NSObject, NSMenuDelegate, StatusItemControllin
     let settings: SettingsStore
     let agentSessions: AgentSessionsStore
     let agentTaskStatus = AgentTaskStatusStore()
+    let agentTaskApprovals = AgentTaskApprovalStore()
     var agentTaskEventServer: AgentTaskEventSocketServer?
+    var agentTaskApprovalServer: AgentTaskApprovalServer?
     lazy var menuCardRefreshMonitor = self.makeMenuCardRefreshMonitor()
     var notchSurfaces: NotchSurfaceCoordinator?
 
@@ -204,6 +206,7 @@ final class StatusItemController: NSObject, NSMenuDelegate, StatusItemControllin
     var onDelayedMenuRefreshAttemptForTesting: (() -> Void)?
     var onDeferredMenuInteractionRefreshForTesting: (() -> Void)?
     var onOpenMenuInvalidationRetryForTesting: (() -> Void)?
+    var onNotchRefreshForTesting: (() -> Void)?
     var isReleasedForTesting = false
     var lastLoggedClosedMenuRebuildVersion: Int?
     var _test_openMenuRefreshYieldOverride: (@MainActor () async -> Void)?
@@ -257,6 +260,7 @@ final class StatusItemController: NSObject, NSMenuDelegate, StatusItemControllin
     var lastWidgetDisplaySettingsSignature = ""
     var lastAgentSessionsEnabled: Bool
     var lastAgentTaskStatusEnabled: Bool
+    var lastAgentTaskApprovalsEnabled = false
     var lastAgentSessionsManualHosts: String
     var lastAgentSessionsRefreshFrequency: RefreshFrequency
     var lastAdaptiveActivityScanningEnabled: Bool
@@ -411,6 +415,7 @@ final class StatusItemController: NSObject, NSMenuDelegate, StatusItemControllin
         self.lastObservedUsageBarsShowUsed = settings.usageBarsShowUsed
         self.lastAgentSessionsEnabled = settings.agentSessionsEnabled
         self.lastAgentTaskStatusEnabled = false
+        self.lastAgentTaskApprovalsEnabled = false
         self.lastAgentSessionsManualHosts = settings.agentSessionsManualHosts
         self.lastAgentSessionsRefreshFrequency = settings.refreshFrequency
         self.lastAdaptiveActivityScanningEnabled = settings.adaptiveActivityScanningEnabled
@@ -527,6 +532,10 @@ final class StatusItemController: NSObject, NSMenuDelegate, StatusItemControllin
     func handleObservedStoreMenuChange() {
         self.observeStoreChanges()
         self.updatePersistentRefreshItemsEnabled()
+        self.notchSurfaces?.refreshAll()
+        #if DEBUG
+        self.onNotchRefreshForTesting?()
+        #endif
         let rootOpenHandledReadiness = self.consumeRootOpenHandledMenuObservationIfNeeded()
         // `refreshOpenMenus` is only consulted when a menu is currently open.
         // Computing the readiness signature serializes every enabled provider's
@@ -1075,7 +1084,12 @@ extension StatusItemController {
                         self?.selectedMenuProvider = provider
                         self?.notchSurfaces?.refreshAll()
                     },
-                    onOpenTask: { [weak self] in self?.openDisplayedAgentTask() },
+                    onOpenTask: { [weak self] card in
+                        self?.openAgentTask(provider: card.provider, sessionID: card.sessionID)
+                    },
+                    onDecideApproval: { [weak self] request, action in
+                        self?.agentTaskApprovals.resolve(id: request.id, action: action)
+                    },
                     onDismissAttention: { [weak self] in
                         self?.agentTaskStatus.dismissCurrentAttention()
                     })
@@ -1086,14 +1100,19 @@ extension StatusItemController {
 
     private var shouldShowNotchSurfaces: Bool {
         IslandShellLaunchOptions.current.isFixture
+            // Deliberately mode-agnostic: if the approval handler and the setting disagree, the
+            // settings panel offers a repair, but the island keeps showing status and quota rather
+            // than vanishing over a hook detail the user cannot see.
             || self.settings.agentTaskStatusEnabled && AgentTaskProvider.allCases.contains { provider in
-                AgentTaskHookInstaller().inspect(provider).document == .installed
+                AgentTaskHookInstaller(approvalsEnabled: self.settings.agentTaskApprovalsEnabled)
+                    .inspect(provider).hasManagedHooks
             }
     }
 
     private static var emptyNotchBarContentSnapshot: NotchBarContentSnapshot {
         NotchBarContentSnapshot(
             selectedProvider: .codex,
+            cardProvider: .codex,
             enabledProviders: [],
             pill: NotchPillContent(text: nil, icon: nil, isRefreshing: false),
             cardModel: nil,
@@ -1101,23 +1120,29 @@ extension StatusItemController {
             hookHealth: [:],
             attention: nil,
             activeSession: nil,
+            pendingApproval: nil,
             hidePersonalInfo: false)
     }
 
     private func notchBarContentSnapshot() -> NotchBarContentSnapshot {
         let provider = self.resolvedMenuProvider() ?? .codex
+        let enabledProviders = self.store.enabledProvidersForDisplay()
+        let usage = self.islandUsageCard(
+            preferredProvider: provider,
+            enabledProviders: enabledProviders)
         let snapshot = self.store.presentationSnapshot(for: provider)
         let text = self.menuBarDisplayText(for: provider, snapshot: snapshot)
         let isRefreshing = self.store.isRefreshing
             || self.store.refreshingProviders.contains(provider)
         return NotchBarContentSnapshot(
             selectedProvider: provider,
-            enabledProviders: self.store.enabledProvidersForDisplay(),
+            cardProvider: usage.provider,
+            enabledProviders: enabledProviders,
             pill: NotchPillContent(
                 text: text,
                 icon: ProviderBrandIcon.image(for: provider),
                 isRefreshing: isRefreshing),
-            cardModel: self.menuCardModel(for: provider),
+            cardModel: usage.model,
             taskAggregates: Dictionary(uniqueKeysWithValues: AgentTaskProvider.allCases.map {
                 ($0, self.agentTaskStatus.aggregate(for: $0))
             }),
@@ -1126,6 +1151,21 @@ extension StatusItemController {
             }),
             attention: self.agentTaskStatus.currentAttention,
             activeSession: self.currentAgentTaskSession(),
+            pendingApproval: self.agentTaskApprovals.current,
             hidePersonalInfo: self.settings.hidePersonalInfo)
+    }
+
+    func islandUsageCard(
+        preferredProvider: UsageProvider,
+        enabledProviders: [UsageProvider])
+        -> (provider: UsageProvider, model: UsageMenuCardView.Model?)
+    {
+        var preferredModel: UsageMenuCardView.Model?
+        for candidate in [preferredProvider] + enabledProviders.filter({ $0 != preferredProvider }) {
+            let model = self.menuCardModel(for: candidate)
+            if candidate == preferredProvider { preferredModel = model }
+            if model?.metrics.isEmpty == false { return (candidate, model) }
+        }
+        return (preferredProvider, preferredModel)
     }
 }

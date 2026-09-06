@@ -1,0 +1,47 @@
+{
+  "installedApp": "/Applications/Vibeisland.app",
+  "binarySHA256": "9cc76cbeebce44a456a170fb86f558a44c92da9c210643aa157574362dfe62af",
+  "buildTimestamp": "2026-09-06T00:09:20Z",
+  "pids": [
+    60712
+  ],
+  "persistedBindings": 1,
+  "rolesUsed": [
+    0
+  ],
+  "signatureVerified": true,
+  "check": {
+    "files": 1708,
+    "violations": 0
+  },
+  "tests": {
+    "selections": 786,
+    "groups": 66,
+    "firstPassSuccessful": 66,
+    "retries": 0,
+    "timeouts": 0
+  },
+  "liveGeometry": {
+    "displayCount": 1,
+    "screen": [
+      0,
+      0,
+      1440,
+      932
+    ],
+    "physicalNotch": [
+      642,
+      0,
+      156,
+      28
+    ],
+    "stage": [
+      440,
+      0,
+      560,
+      520
+    ]
+  },
+  "runtimeUI": "Installed app responded and Settings window opened through native menu after cache fix",
+  "externalDisplayVerification": "offset and negative-origin geometry tests; no external display connected during final live check"
+}

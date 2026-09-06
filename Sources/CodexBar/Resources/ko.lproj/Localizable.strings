@@ -1334,6 +1334,17 @@
 "agent_task_interrupted" = "Task interrupted";
 "agent_task_disconnected" = "Disconnected";
 "agent_task_open" = "Open Task";
+"island_jump_hint" = "완료 — 클릭하여 이동";
+"island_answer_in_terminal" = "계속하려면 터미널에서 답변하세요.";
+"island_jumped" = "세션으로 이동했습니다";
+"island_waiting_answer" = "답변을 기다리는 중";
+"island_denied_from_codexbar" = "CodexBar에서 거부함";
+"island_allow_once" = "한 번 허용";
+"island_allow_all" = "항상 허용";
+"island_bypass" = "우회";
+"island_approvals_title" = "아일랜드에서 권한 결정";
+"island_approvals_subtitle" = "Claude Code와 Codex의 권한 요청에 노치에서 응답합니다. PermissionRequest 훅이 차단 방식이 됩니다. CodexBar가 제때 응답하지 못하면 평소처럼 터미널에서 묻습니다.";
+"island_approvals_codex_trust" = "Codex 전용: Codex에서 /hooks를 실행해 업데이트된 훅을 신뢰하세요. 그렇지 않으면 비활성 상태로 남습니다. Codex는 거부와 한 번 허용만 지원합니다.";
 "agent_task_none" = "No active task";
 "agent_task_quota" = "Quota";
 "agent_task_privacy" = "Task status keeps only local session identity, state, project path, and timestamps. It does not store prompts, commands, or model replies.";

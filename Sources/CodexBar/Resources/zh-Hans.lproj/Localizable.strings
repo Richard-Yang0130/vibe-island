@@ -1342,6 +1342,17 @@
 "agent_task_interrupted" = "任务已中断";
 "agent_task_disconnected" = "已断开连接";
 "agent_task_open" = "打开任务";
+"island_jump_hint" = "已完成 — 点击跳回终端";
+"island_answer_in_terminal" = "回到终端回答即可继续。";
+"island_jumped" = "已跳回会话";
+"island_waiting_answer" = "等待你回答";
+"island_denied_from_codexbar" = "已在 CodexBar 中拒绝";
+"island_allow_once" = "允许一次";
+"island_allow_all" = "始终允许";
+"island_bypass" = "放弃管控";
+"island_approvals_title" = "在岛上做授权决策";
+"island_approvals_subtitle" = "直接在刘海里回应 Claude Code 与 Codex 的授权请求。这会让 PermissionRequest hook 变为阻塞式；若 CodexBar 未能及时回答，agent 会照常回到终端询问。";
+"island_approvals_codex_trust" = "仅 Codex：需在 Codex 中执行 /hooks 并信任更新后的 hook，否则不会生效。Codex 仅支持「拒绝」和「允许一次」。";
 "agent_task_none" = "没有活动任务";
 "agent_task_quota" = "额度";
 "agent_task_privacy" = "任务状态仅保留本地会话标识、状态、项目路径和时间戳，不会存储提示词、命令或模型回复。";

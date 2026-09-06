@@ -19,6 +19,7 @@ struct NotchPillContent: Equatable {
 
 struct NotchBarContentSnapshot {
     var selectedProvider: UsageProvider
+    var cardProvider: UsageProvider
     var enabledProviders: [UsageProvider]
     var pill: NotchPillContent
     var cardModel: UsageMenuCardView.Model?
@@ -26,6 +27,7 @@ struct NotchBarContentSnapshot {
     var hookHealth: [AgentTaskProvider: AgentTaskHookHealth]
     var attention: AgentTaskAttention?
     var activeSession: AgentTaskSessionState?
+    var pendingApproval: AgentTaskPendingApproval?
     var hidePersonalInfo: Bool
 }
 
@@ -340,7 +342,10 @@ final class NotchIslandHostingView<Content: View>: NSHostingView<Content> {
 @MainActor
 @Observable
 final class NotchBarState {
-    var phase: IslandShellPhase = .compact
+    var scene: IslandScene = .compact
+    /// Rebuilt whenever a content snapshot arrives rather than derived per render, so the session
+    /// sort never runs on an animation frame.
+    var islandContent: IslandContent = .empty
     var pill: NotchPillContent?
     var selectedProvider: UsageProvider = .codex
     var enabledProviders: [UsageProvider] = []
@@ -349,6 +354,7 @@ final class NotchBarState {
     var hookHealth: [AgentTaskProvider: AgentTaskHookHealth] = [:]
     var attention: AgentTaskAttention?
     var activeSession: AgentTaskSessionState?
+    var pendingApproval: AgentTaskPendingApproval?
     var hidePersonalInfo = false
     var notchSize = CGSize(width: 180, height: 32)
     var hasPhysicalNotch = true
@@ -365,10 +371,13 @@ final class NotchBarState {
 extension NotchBarState {
     var shellPresentation: IslandShellPresentation {
         IslandShellPresentation(
-            phase: self.phase,
+            scene: self.scene,
             anchorSize: self.notchSize,
             hasPhysicalNotch: self.hasPhysicalNotch,
-            fixture: .reference)
+            // Wings only grow once there is a real reading to put in them, so an unconfigured
+            // install never permanently occupies menu-bar space for nothing.
+            showsCompactQuota: self.islandContent.usage?.compactReading != nil || !self.islandContent.cards.isEmpty,
+            cardCount: self.islandContent.cards.count)
     }
 
     var plan: NotchDetailPlan {
@@ -456,7 +465,8 @@ final class NotchBarController: NSObject {
     private let onRefresh: @MainActor () -> Void
     private let onSettings: @MainActor () -> Void
     private let onSelectProvider: @MainActor (UsageProvider) -> Void
-    private let onOpenTask: @MainActor () -> Void
+    private let onOpenTask: @MainActor (IslandSessionCard) -> Void
+    private let onDecideApproval: @MainActor (IslandApprovalRequest, AgentTaskApprovalAction) -> Void
     private let onDismissAttention: @MainActor () -> Void
     private let refreshMonitor: MenuCardRefreshMonitor?
     private let launchOptions = IslandShellLaunchOptions.current
@@ -468,9 +478,13 @@ final class NotchBarController: NSObject {
     private var pointerWatchdog: Timer?
     private var dwellTask: Task<Void, Never>?
     private var collapseTask: Task<Void, Never>?
+    private var acknowledgeTask: Task<Void, Never>?
     private var isPointerInside = false
     private var hoverZone: CGRect = .zero
     private var lastCollapsedAt: Date?
+    private var scenePresentedAt = Date()
+    private var presentedAttention = IslandPresentedAttention()
+    private var lastPointerLocation = CGPoint(x: CGFloat.infinity, y: CGFloat.infinity)
     private var lastFullscreenCheckAt = Date.distantPast
     private var cachedFullscreen = false
 
@@ -479,7 +493,7 @@ final class NotchBarController: NSObject {
     }
 
     var isExpanded: Bool {
-        self.state.phase == .expanded
+        self.state.scene.isExpanded
     }
 
     var screenFrame: CGRect {
@@ -499,7 +513,8 @@ final class NotchBarController: NSObject {
         onRefresh: @escaping @MainActor () -> Void,
         onSettings: @escaping @MainActor () -> Void,
         onSelectProvider: @escaping @MainActor (UsageProvider) -> Void,
-        onOpenTask: @escaping @MainActor () -> Void,
+        onOpenTask: @escaping @MainActor (IslandSessionCard) -> Void,
+        onDecideApproval: @escaping @MainActor (IslandApprovalRequest, AgentTaskApprovalAction) -> Void,
         onDismissAttention: @escaping @MainActor () -> Void)
     {
         self.displayID = displayID
@@ -511,6 +526,7 @@ final class NotchBarController: NSObject {
         self.onSettings = onSettings
         self.onSelectProvider = onSelectProvider
         self.onOpenTask = onOpenTask
+        self.onDecideApproval = onDecideApproval
         self.onDismissAttention = onDismissAttention
         self.panel = NotchBarPanel(
             contentRect: NSRect(x: 0, y: 0, width: 200, height: 40),
@@ -521,10 +537,13 @@ final class NotchBarController: NSObject {
         self.configurePanel()
         self.state.notchSize = layout.anchorRect.size
         self.state.hasPhysicalNotch = layout.hasPhysicalNotch
-        self.state.phase = self.launchOptions.phase
+        self.state.scene = self.launchOptions.scene
         self.state.fixtureIndicatorScenario = self.launchOptions.isFixture
             ? self.launchOptions.indicatorScenario
             : nil
+        if self.launchOptions.isFixture {
+            self.state.islandContent = .fixture(scene: self.launchOptions.scene)
+        }
         self.state.reduceMotion = self.launchOptions.reduceMotion
             || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         self.applyPanelFrame()
@@ -575,9 +594,25 @@ final class NotchBarController: NSObject {
     private func makeActions() -> NotchIslandActions {
         NotchIslandActions(
             refresh: { [weak self] in self?.onRefresh() },
+            decideApproval: { [weak self] request, action in
+                guard let self else { return }
+                guard request.actions.contains(action) else { return }
+                if self.launchOptions.isFixture {
+                    self.acknowledge(Self.acknowledgement(for: action))
+                    return
+                }
+                guard self.state.pendingApproval?.id == request.id else { return }
+                self.onDecideApproval(request, action)
+                self.refreshPillContent()
+                if self.state.pendingApproval == nil {
+                    self.acknowledge(Self.acknowledgement(for: action))
+                } else if self.state.pendingApproval?.id != request.id {
+                    self.setScene(.approval)
+                }
+            },
             settings: { [weak self] in
                 self?.setPinned(false)
-                self?.collapseNow()
+                self?.collapseNow(allowPendingApproval: true)
                 self?.onSettings()
             },
             selectProvider: { [weak self] provider in self?.onSelectProvider(provider) },
@@ -586,10 +621,10 @@ final class NotchBarController: NSObject {
                 self.setPinned(!self.state.isPinned)
             },
             toggleExpanded: { [weak self] in self?.toggle() },
-            openTask: { [weak self] in
+            openTask: { [weak self] card in
                 guard let self else { return }
-                self.onOpenTask()
-                self.collapseAttention()
+                self.onOpenTask(card)
+                self.collapseNow(allowPendingApproval: true)
             },
             // Redundant entry signal: AppKit tracking areas still fire when a mouse-moved event is
             // dropped (fast flicks, Space switches). Exits stay owned by the pointer watchdog so a
@@ -621,7 +656,7 @@ final class NotchBarController: NSObject {
         let content = self.makeContent()
         // Reuse the menu card's freeze so a manual refresh does not blank the panel mid-flight.
         let card = content.cardModel.map {
-            self.refreshMonitor?.model(for: content.selectedProvider, fallback: $0) ?? $0
+            self.refreshMonitor?.model(for: content.cardProvider, fallback: $0) ?? $0
         }
         withAnimation(NotchMotion.contentChange) {
             self.state.selectedProvider = content.selectedProvider
@@ -632,8 +667,19 @@ final class NotchBarController: NSObject {
             self.state.hookHealth = content.hookHealth
             self.state.attention = content.attention
             self.state.activeSession = content.activeSession
+            self.state.pendingApproval = content.pendingApproval
             self.state.hidePersonalInfo = content.hidePersonalInfo
+            if !self.launchOptions.isFixture {
+                self.state.islandContent = IslandContent(
+                    card: card,
+                    aggregates: content.taskAggregates,
+                    attention: content.attention,
+                    approval: content.pendingApproval,
+                    hidePersonalInfo: content.hidePersonalInfo,
+                    acknowledgement: self.state.islandContent.acknowledgement).assigningCompanions()
+            }
         }
+        self.raiseSceneIfNeeded()
         // Metric count drives the panel height, so the hit-box moves with the data.
         self.refreshHoverZone()
     }
@@ -642,23 +688,99 @@ final class NotchBarController: NSObject {
         self.refreshPillContent()
     }
 
-    func present(_: AgentTaskAttention) {}
+    func present(_ attention: AgentTaskAttention) {
+        self.raiseSceneIfNeeded(attention: attention)
+    }
 
-    func collapseForExternalAttention() {}
+    func collapseForExternalAttention() {
+        self.collapseNow(allowPendingApproval: true)
+    }
 
-    func collapseAttention() {}
+    func collapseAttention() {
+        guard self.state.scene.demandsAttention, self.state.pendingApproval == nil,
+              !self.isPointerInside, !self.panel.isKeyWindow, !self.state.isPinned else { return }
+        self.collapseNow(allowPendingApproval: true)
+    }
 
     /// Used by the global hotkey and by clicks on the band.
     func toggle() {
-        if self.state.phase == .expanded {
-            self.collapseNow()
-        } else if self.state.phase == .compact {
+        if self.state.scene.isExpanded {
+            self.collapseNow(allowPendingApproval: true)
+        } else if self.state.scene == .compact {
             guard NotchSurfaceVisibilityPolicy.shouldExpand(
                 trigger: .click,
                 isFullscreen: self.isFullscreen())
             else { return }
-            self.setPhase(.expanded)
+            self.setScene(self.expansionScene)
             self.startPointerWatchdog()
+        }
+    }
+
+    /// Where a deliberate open lands.
+    ///
+    /// A request the user is blocking beats the session list every time: if something is waiting on
+    /// them, opening the island must show that, not bury it behind an overview they then have to
+    /// navigate out of.
+    private var expansionScene: IslandScene {
+        if self.state.pendingApproval != nil { return .approval }
+        return IslandScenePolicy.manualExpansion(for: self.state.islandContent.leadStatus)
+    }
+
+    /// Raises an attention scene when an agent starts waiting on the user.
+    ///
+    /// Ordinary `running` never interrupts — that is the entire point of the ambient state, and the
+    /// reason this is a policy table instead of "expand whenever something changed".
+    private var attentionKey: String? {
+        if let approval = self.state.pendingApproval { return "approval:\(approval.id)" }
+        return self.state.attention.map { "event:\($0.event.provider.rawValue):\($0.id)" }
+    }
+
+    private func raiseSceneIfNeeded(attention: AgentTaskAttention? = nil) {
+        guard !self.launchOptions.isFixture else { return }
+        // A blocking request beats any telemetry-derived guess: something is literally waiting.
+        let raised: IslandScene
+        if self.state.pendingApproval != nil {
+            raised = .approval
+        } else if let scene = IslandScenePolicy.autoRaise(for: attention?.status ?? self.state.attention?.status) {
+            raised = scene
+        } else {
+            return
+        }
+        guard IslandScenePolicy.canPresentAttention(raised, from: self.state.scene),
+              NotchSurfaceVisibilityPolicy.shouldExpand(
+                  trigger: .taskAttention,
+                  isFullscreen: self.isFullscreen())
+        else { return }
+        let key = self.state.pendingApproval == nil
+            ? attention.map { "event:\($0.event.provider.rawValue):\($0.id)" } ?? self.attentionKey
+            : self.attentionKey
+        guard let key, self.presentedAttention.markIfNew(key) else { return }
+        self.setScene(raised)
+        self.startPointerWatchdog()
+    }
+
+    /// Confirmation text for the narrow strip after a decision.
+    private static func acknowledgement(for action: AgentTaskApprovalAction) -> String {
+        switch action {
+        case .deny: L("Deny")
+        case .allowOnce: L("island_allow_once")
+        case .allowAlways: L("island_allow_all")
+        case .bypass: L("island_bypass")
+        }
+    }
+
+    /// Confirms an action in a narrow strip, then falls back to `compact` on its own so the island
+    /// never sits on screen waiting to be dismissed.
+    private func acknowledge(_ text: String) {
+        self.state.islandContent = self.state.islandContent.acknowledging(text)
+        self.setScene(.ack)
+        self.acknowledgeTask?.cancel()
+        self.acknowledgeTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(IslandScenePolicy.acknowledgementDwell))
+            guard !Task.isCancelled, let self, self.state.scene == .ack else { return }
+            self.acknowledgeTask = nil
+            self.setScene(.compact)
+            self.raiseSceneIfNeeded()
         }
     }
 
@@ -671,7 +793,7 @@ final class NotchBarController: NSObject {
         self.removeEventMonitors()
         self.stopPointerWatchdog()
         self.panel.orderOut(nil)
-        self.state.phase = .dormant
+        self.state.scene = .dormant
         self.state.isPinned = false
         self.layout = nil
         self.hoverZone = .zero
@@ -687,14 +809,24 @@ final class NotchBarController: NSObject {
 
     /// Pointer tracking runs on every mouse-moved event, so the hit-box is cached instead of being
     /// rebuilt (and re-measuring the detail plan) per event.
-    private func handlePointerActivity() {
+    private func handlePointerActivity(coalesce: Bool = true) {
         guard self.layout != nil else { return }
         let pointerLocation = NSEvent.mouseLocation
+        // One pass per 60Hz frame is all the hover state machine can act on; the monitor fires far
+        // more often than that while the pointer is in flight.
+        if coalesce {
+            guard pointerLocation != self.lastPointerLocation else { return }
+            self.lastPointerLocation = pointerLocation
+        }
         self.updatePanelMouseEventPolicy(pointerLocation: pointerLocation)
         if self.hoverZone.contains(pointerLocation) {
             self.pointerDidEnter()
         } else {
             self.pointerDidExit()
+        }
+        // The existing watchdog also handles completion when the pointer never entered the island.
+        if self.state.scene == .done, self.canAutomaticallyCollapse {
+            self.collapseNow()
         }
     }
 
@@ -716,10 +848,15 @@ final class NotchBarController: NSObject {
     }
 
     private func updatePanelMouseEventPolicy(pointerLocation: CGPoint) {
-        self.panel.ignoresMouseEvents = NotchMouseEventPolicy.ignoresMouseEvents(
+        let ignores = NotchMouseEventPolicy.ignoresMouseEvents(
             pointerLocation: pointerLocation,
             hoverZone: self.hoverZone,
             isFixture: self.launchOptions.isFixture)
+        // Assigning this is a window-server round trip. The global mouse monitor fires on every
+        // pointer move system-wide, so writing it unconditionally competes with the animation for
+        // the main thread; almost every move leaves the value unchanged.
+        guard ignores != self.panel.ignoresMouseEvents else { return }
+        self.panel.ignoresMouseEvents = ignores
     }
 
     private func pointerDidEnter() {
@@ -735,7 +872,7 @@ final class NotchBarController: NSObject {
             isFullscreen: self.isFullscreen())
         else { return }
         self.isPointerInside = true
-        if self.state.phase == .compact {
+        if self.state.scene == .compact {
             self.scheduleDwellExpansion()
             self.startPointerWatchdog()
         }
@@ -746,22 +883,22 @@ final class NotchBarController: NSObject {
         self.isPointerInside = false
         self.dwellTask?.cancel()
         self.dwellTask = nil
-        if self.state.phase == .expanded {
+        if self.state.scene.isExpanded {
             self.scheduleCollapse()
         }
     }
 
     private func scheduleDwellExpansion() {
-        guard self.state.phase == .compact, self.dwellTask == nil else { return }
+        guard self.state.scene == .compact, self.dwellTask == nil else { return }
         self.dwellTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(IslandShellMetrics.hoverDelay))
             guard !Task.isCancelled,
                   let self,
                   self.isPointerInside,
-                  self.state.phase == .compact
+                  self.state.scene == .compact
             else { return }
             self.dwellTask = nil
-            self.setPhase(.expanded)
+            self.setScene(self.expansionScene)
         }
     }
 
@@ -775,19 +912,39 @@ final class NotchBarController: NSObject {
         }
     }
 
-    private func collapseNow() {
+    private var canAutomaticallyCollapse: Bool {
+        IslandScenePolicy.canAutomaticallyCollapse(
+            scene: self.state.scene,
+            status: self.state.attention?.status ?? self.state.islandContent.leadStatus,
+            hasPendingApproval: self.state.pendingApproval != nil,
+            pointerInside: self.isPointerInside,
+            keyboardFocus: self.panel.isKeyWindow,
+            pinned: self.state.isPinned,
+            elapsed: Date().timeIntervalSince(self.scenePresentedAt))
+    }
+
+    private func collapseNow(allowPendingApproval: Bool = false) {
         self.dwellTask?.cancel()
         self.dwellTask = nil
-        guard self.state.phase == .expanded, !self.state.isPinned else { return }
+        // A launch fixture exists to hold one frame still for a screenshot; letting the hover
+        // choreography collapse it defeats the point.
+        guard !self.launchOptions.isFixture else { return }
+        guard allowPendingApproval || self.canAutomaticallyCollapse else { return }
+        guard self.state.scene != .compact, self.state.scene != .dormant else { return }
+        if let key = self.attentionKey { _ = self.presentedAttention.markIfNew(key) }
         self.lastCollapsedAt = Date()
-        self.setPhase(.compact)
+        self.setScene(.compact)
     }
 
     /// Single funnel for phase changes so the cached hit-box can never fall out of sync with the
     /// silhouette the user actually sees.
-    private func setPhase(_ phase: IslandShellPhase) {
+    private func setScene(_ scene: IslandScene) {
+        if self.state.scene != scene { self.scenePresentedAt = Date() }
         withAnimation(IslandShellMotion.container(reduceMotion: self.state.reduceMotion)) {
-            self.state.phase = phase
+            self.state.scene = scene
+            if self.launchOptions.isFixture {
+                self.state.islandContent = .fixture(scene: scene)
+            }
         }
         self.refreshHoverZone()
     }
@@ -804,6 +961,8 @@ final class NotchBarController: NSObject {
         self.dwellTask = nil
         self.collapseTask?.cancel()
         self.collapseTask = nil
+        self.acknowledgeTask?.cancel()
+        self.acknowledgeTask = nil
     }
 
     private func isFullscreen(now: Date = Date()) -> Bool {
@@ -838,8 +997,8 @@ final class NotchBarController: NSObject {
             self.eventMonitors.append(monitor)
         }
         if let monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown], handler: { [weak self] event in
-            guard event.keyCode == 53, let self, self.state.phase == .expanded else { return event }
-            self.collapseNow()
+            guard event.keyCode == 53, let self, self.state.scene.isExpanded else { return event }
+            self.collapseNow(allowPendingApproval: true)
             return nil
         }) {
             self.eventMonitors.append(monitor)
@@ -847,7 +1006,7 @@ final class NotchBarController: NSObject {
     }
 
     private func handleClickOutside() {
-        guard self.state.phase == .expanded else { return }
+        guard self.state.scene.isExpanded else { return }
         guard !self.hoverZone.contains(NSEvent.mouseLocation) else { return }
         self.collapseNow()
     }
@@ -864,7 +1023,7 @@ final class NotchBarController: NSObject {
     private func startPointerWatchdog() {
         guard self.pointerWatchdog == nil else { return }
         let timer = Timer(timeInterval: 0.25, repeats: true) { [weak self] _ in
-            MainActor.assumeIsolated { self?.handlePointerActivity() }
+            MainActor.assumeIsolated { self?.handlePointerActivity(coalesce: false) }
         }
         RunLoop.main.add(timer, forMode: .common)
         self.pointerWatchdog = timer

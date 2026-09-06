@@ -6,39 +6,57 @@ import WidgetKit
 
 extension UsageStore {
     func persistWidgetSnapshot(reason: String) {
-        // A fresh process has token-cost data before a user-authorized Claude OAuth refresh can run.
-        // Keep the last queued snapshot in memory so back-to-back writes cannot race the on-disk cache.
-        let previousSnapshot = self.lastQueuedWidgetSnapshot ?? {
+        // Initial cache access can wait on OS permissions. Coalesce refreshes until it returns,
+        // then project the latest MainActor state without overwriting unread cached Claude quota.
+        guard !self.widgetSnapshotLoadInProgress else { return }
+        if self.lastQueuedWidgetSnapshot == nil {
             #if DEBUG
-            // Snapshot-save overrides must stay isolated from a developer's real app-group data.
-            guard !SettingsStore.isRunningTests,
-                  self._test_widgetSnapshotSaveOverride == nil
-            else { return nil }
+            let shouldLoad = self._test_widgetSnapshotLoadOverride != nil ||
+                (!SettingsStore.isRunningTests && self._test_widgetSnapshotSaveOverride == nil)
+            #else
+            let shouldLoad = true
             #endif
-            return WidgetSnapshotStore.load()
-        }()
-        let snapshot = self.makeWidgetSnapshot(previousSnapshot: previousSnapshot)
+            if shouldLoad {
+                let loader = self._test_widgetSnapshotLoadOverride ?? { WidgetSnapshotStore.load() }
+                self.widgetSnapshotLoadInProgress = true
+                self.widgetSnapshotPersistTask = Task { @MainActor [weak self] in
+                    let previousSnapshot = await Task.detached(priority: .utility, operation: loader).value
+                    guard let self else { return }
+                    self.widgetSnapshotLoadInProgress = false
+                    let snapshot = self.makeWidgetSnapshot(previousSnapshot: previousSnapshot)
+                    self.lastQueuedWidgetSnapshot = snapshot
+                    await self.saveWidgetSnapshot(snapshot)
+                }
+                return
+            }
+        }
+
+        // Keep queued snapshots in memory so back-to-back writes cannot race the on-disk cache.
+        let snapshot = self.makeWidgetSnapshot(previousSnapshot: self.lastQueuedWidgetSnapshot)
         self.lastQueuedWidgetSnapshot = snapshot
         let previousTask = self.widgetSnapshotPersistTask
         self.widgetSnapshotPersistTask = Task { @MainActor in
             _ = await previousTask?.result
-
-            if let override = self._test_widgetSnapshotSaveOverride {
-                await override(snapshot)
-                return
-            }
-
-            #if DEBUG
-            guard !SettingsStore.isRunningTests else { return }
-            #endif
-
-            await Task.detached(priority: .utility) {
-                WidgetSnapshotStore.save(snapshot)
-            }.value
-            #if canImport(WidgetKit)
-            WidgetCenter.shared.reloadAllTimelines()
-            #endif
+            await self.saveWidgetSnapshot(snapshot)
         }
+    }
+
+    private func saveWidgetSnapshot(_ snapshot: WidgetSnapshot) async {
+        if let override = self._test_widgetSnapshotSaveOverride {
+            await override(snapshot)
+            return
+        }
+
+        #if DEBUG
+        guard !SettingsStore.isRunningTests else { return }
+        #endif
+
+        await Task.detached(priority: .utility) {
+            WidgetSnapshotStore.save(snapshot)
+        }.value
+        #if canImport(WidgetKit)
+        WidgetCenter.shared.reloadAllTimelines()
+        #endif
     }
 
     private func makeWidgetSnapshot(previousSnapshot: WidgetSnapshot?) -> WidgetSnapshot {

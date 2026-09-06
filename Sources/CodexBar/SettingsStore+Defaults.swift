@@ -988,6 +988,18 @@ extension SettingsStore {
         }
     }
 
+    /// Opt-in: lets the island answer permission requests on the user's behalf.
+    ///
+    /// Off by default on purpose. Turning it on makes the `PermissionRequest` hook synchronous, so
+    /// a fault in CodexBar can delay every tool call the agents make.
+    var agentTaskApprovalsEnabled: Bool {
+        get { self.defaultsState.agentTaskApprovalsEnabled }
+        set {
+            self.defaultsState.agentTaskApprovalsEnabled = newValue
+            self.userDefaults.set(newValue, forKey: "agentTaskApprovalsEnabled")
+        }
+    }
+
     var agentSessionLabelStyle: AgentSessionLabelStyle {
         get { AgentSessionLabelStyle(rawValue: self.defaultsState.agentSessionLabelStyleRaw) ?? .project }
         set {

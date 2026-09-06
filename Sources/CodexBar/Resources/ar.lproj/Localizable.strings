@@ -1370,6 +1370,17 @@
 "agent_task_interrupted" = "Task interrupted";
 "agent_task_disconnected" = "Disconnected";
 "agent_task_open" = "Open Task";
+"island_jump_hint" = "تم — انقر للانتقال";
+"island_answer_in_terminal" = "أجب في الطرفية للمتابعة.";
+"island_jumped" = "تم الانتقال إلى الجلسة";
+"island_waiting_answer" = "في انتظار إجابتك";
+"island_denied_from_codexbar" = "مرفوض من CodexBar";
+"island_allow_once" = "السماح مرة واحدة";
+"island_allow_all" = "السماح دائمًا";
+"island_bypass" = "تجاوز";
+"island_approvals_title" = "قرارات الأذونات من الجزيرة";
+"island_approvals_subtitle" = "أجب عن طلبات أذونات Claude Code وCodex في النتش. يجعل خطاف PermissionRequest حاجبًا؛ وإذا تعذر الرد في الوقت المناسب يسأل الوكيل في الطرفية كالمعتاد.";
+"island_approvals_codex_trust" = "لـ Codex فقط: شغّل /hooks في Codex وثق بالخطاف المحدَّث، وإلا سيبقى غير مفعّل. يدعم Codex الرفض والسماح مرة واحدة فقط.";
 "agent_task_none" = "No active task";
 "agent_task_quota" = "Quota";
 "agent_task_privacy" = "Task status keeps only local session identity, state, project path, and timestamps. It does not store prompts, commands, or model replies.";

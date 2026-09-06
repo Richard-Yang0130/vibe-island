@@ -1370,6 +1370,17 @@
 "agent_task_interrupted" = "Task interrupted";
 "agent_task_disconnected" = "Disconnected";
 "agent_task_open" = "Open Task";
+"island_jump_hint" = "เสร็จแล้ว — คลิกเพื่อข้ามไป";
+"island_answer_in_terminal" = "ตอบในเทอร์มินัลเพื่อดำเนินการต่อ";
+"island_jumped" = "ข้ามไปยังเซสชันแล้ว";
+"island_waiting_answer" = "กำลังรอคำตอบของคุณ";
+"island_denied_from_codexbar" = "ปฏิเสธจาก CodexBar";
+"island_allow_once" = "อนุญาตครั้งเดียว";
+"island_allow_all" = "อนุญาตเสมอ";
+"island_bypass" = "ข้าม";
+"island_approvals_title" = "ตัดสินใจสิทธิ์จากไอส์แลนด์";
+"island_approvals_subtitle" = "ตอบคำขอสิทธิ์ของ Claude Code และ Codex ในรอยบาก จะทำให้ฮุก PermissionRequest เป็นแบบบล็อก หาก CodexBar ตอบไม่ทัน เอเจนต์จะถามในเทอร์มินัลตามปกติ";
+"island_approvals_codex_trust" = "เฉพาะ Codex: รัน /hooks ใน Codex แล้วเชื่อถือฮุกที่อัปเดต มิฉะนั้นจะไม่ทำงาน Codex รองรับเฉพาะปฏิเสธและอนุญาตครั้งเดียว";
 "agent_task_none" = "No active task";
 "agent_task_quota" = "Quota";
 "agent_task_privacy" = "Task status keeps only local session identity, state, project path, and timestamps. It does not store prompts, commands, or model replies.";

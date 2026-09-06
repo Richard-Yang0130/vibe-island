@@ -1370,6 +1370,17 @@
 "agent_task_interrupted" = "Task interrupted";
 "agent_task_disconnected" = "Disconnected";
 "agent_task_open" = "Open Task";
+"island_jump_hint" = "انجام شد — برای پرش کلیک کنید";
+"island_answer_in_terminal" = "برای ادامه در ترمینال پاسخ دهید.";
+"island_jumped" = "به نشست پرش شد";
+"island_waiting_answer" = "در انتظار پاسخ شما";
+"island_denied_from_codexbar" = "از CodexBar رد شد";
+"island_allow_once" = "یک‌بار اجازه بده";
+"island_allow_all" = "همیشه اجازه بده";
+"island_bypass" = "نادیده گرفتن";
+"island_approvals_title" = "تصمیم‌گیری مجوزها از جزیره";
+"island_approvals_subtitle" = "به درخواست‌های مجوز Claude Code و Codex در ناچ پاسخ دهید. قلاب PermissionRequest مسدودکننده می‌شود؛ اگر CodexBar به‌موقع پاسخ ندهد، عامل طبق روال در ترمینال می‌پرسد.";
+"island_approvals_codex_trust" = "فقط Codex: در Codex دستور /hooks را اجرا و قلاب به‌روزشده را تأیید کنید، وگرنه غیرفعال می‌ماند. Codex تنها از رد و اجازه یک‌بار پشتیبانی می‌کند.";
 "agent_task_none" = "No active task";
 "agent_task_quota" = "Quota";
 "agent_task_privacy" = "Task status keeps only local session identity, state, project path, and timestamps. It does not store prompts, commands, or model replies.";

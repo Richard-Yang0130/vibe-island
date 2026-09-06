@@ -6,6 +6,8 @@ struct AgentTaskHookInspection: Equatable {
     let provider: AgentTaskProvider
     let document: AgentTaskHookDocumentStatus
     let configURL: URL
+    /// True when our handlers are installed at all, regardless of approval-mode drift.
+    var hasManagedHooks = false
 }
 
 enum AgentTaskHookInstallerError: Error {
@@ -15,13 +17,18 @@ enum AgentTaskHookInstallerError: Error {
 struct AgentTaskHookInstaller {
     let homeDirectory: URL
     let helperURL: URL
+    /// Whether `PermissionRequest` is installed as a blocking handler. Off keeps every hook
+    /// fire-and-forget, which is the pre-approvals behaviour.
+    let approvalsEnabled: Bool
 
     init(
         homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser,
-        helperURL: URL = Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/CodexBarCLI"))
+        helperURL: URL = Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/CodexBarCLI"),
+        approvalsEnabled: Bool = false)
     {
         self.homeDirectory = homeDirectory
         self.helperURL = helperURL
+        self.approvalsEnabled = approvalsEnabled
     }
 
     func configURL(for provider: AgentTaskProvider) -> URL {
@@ -38,12 +45,17 @@ struct AgentTaskHookInstaller {
         guard let data = try? Data(contentsOf: configURL) else {
             return AgentTaskHookInspection(provider: provider, document: .notInstalled, configURL: configURL)
         }
-        let document = AgentTaskHookDocument.inspect(provider: provider, data: data)
+        let document = AgentTaskHookDocument.inspect(
+            provider: provider,
+            data: data,
+            approvalsEnabled: self.approvalsEnabled)
         let isValidObject = (try? JSONSerialization.jsonObject(with: data)) is [String: Any]
         return AgentTaskHookInspection(
             provider: provider,
             document: isValidObject ? document : .needsRepair,
-            configURL: configURL)
+            configURL: configURL,
+            hasManagedHooks: isValidObject
+                && AgentTaskHookDocument.hasManagedHooks(provider: provider, data: data))
     }
 
     func install(_ provider: AgentTaskProvider) throws {
@@ -52,7 +64,8 @@ struct AgentTaskHookInstaller {
         let installed = try AgentTaskHookDocument.install(
             provider: provider,
             data: current,
-            helperPath: self.helperURL.path)
+            helperPath: self.helperURL.path,
+            approvalsEnabled: self.approvalsEnabled)
         try self.replaceAtomically(installed, at: destination)
     }
 
