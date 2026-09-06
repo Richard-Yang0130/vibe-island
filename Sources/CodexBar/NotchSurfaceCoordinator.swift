@@ -93,6 +93,7 @@ final class NotchSurfaceCoordinator {
     func reconcileScreens(_ screens: [NSScreen] = NSScreen.screens) {
         let pairs: [(CGDirectDisplayID, (NSScreen, NotchBarLayout))] = screens.compactMap { screen in
             guard let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber,
+                  CGDisplayIsBuiltin(number.uint32Value) != 0,
                   let layout = NotchGeometry.layout(on: screen)
             else { return nil }
             return (number.uint32Value, (screen, layout))

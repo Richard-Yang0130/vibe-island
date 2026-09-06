@@ -19,6 +19,7 @@ extension StatusItemController {
         self.removeShutdownStatusItems()
         self.notchSurfaces?.teardown()
         self.notchSurfaces = nil
+        self.agentTaskStatus.stopCompletionMonitoring()
         self.agentTaskEventServer?.stop()
         self.agentTaskEventServer = nil
         self.creditsPurchaseWindow?.close()

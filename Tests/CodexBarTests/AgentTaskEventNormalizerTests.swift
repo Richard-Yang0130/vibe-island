@@ -4,6 +4,15 @@ import Testing
 
 struct AgentTaskEventNormalizerTests {
     @Test
+    func `codex interrupt ends the running turn`() throws {
+        let payload = Data(#"{"session_id":"s2","hook_event_name":"Interrupt"}"#.utf8)
+        let event = try #require(AgentTaskEventNormalizer.normalize(
+            AgentTaskWireEnvelope(schemaVersion: 1, provider: .codex, payload: payload),
+            receivedAt: .now))
+        #expect(event.kind == .turnInterrupted)
+    }
+
+    @Test
     func `claude permission payload keeps identity and drops command text`() throws {
         let payload = try JSONSerialization.data(withJSONObject: [
             "session_id": "s1",

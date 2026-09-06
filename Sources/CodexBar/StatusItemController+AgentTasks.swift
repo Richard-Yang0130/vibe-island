@@ -37,6 +37,7 @@ extension StatusItemController {
         if self.settings.agentTaskStatusEnabled {
             self.startAgentTaskEventServer()
         } else {
+            self.agentTaskStatus.stopCompletionMonitoring()
             self.agentTaskEventServer?.stop()
             self.agentTaskEventServer = nil
         }

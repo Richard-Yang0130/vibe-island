@@ -12,6 +12,7 @@ public struct AgentTaskReducer: Sendable {
     }
 
     private var sessions: [SessionKey: AgentTaskSessionState] = [:]
+    private var terminalSessions = Set<SessionKey>()
     private var terminalTurns = Set<TurnKey>()
 
     public init() {}
@@ -20,11 +21,21 @@ public struct AgentTaskReducer: Sendable {
         let sessionKey = SessionKey(provider: event.provider, sessionID: event.sessionID)
         if event.kind == .sessionEnded {
             self.sessions.removeValue(forKey: sessionKey)
+            self.terminalSessions.remove(sessionKey)
             self.terminalTurns = self.terminalTurns.filter { $0.session != sessionKey }
             return
         }
 
         if let existing = self.sessions[sessionKey], event.occurredAt < existing.updatedAt {
+            return
+        }
+
+        // Async hooks can arrive after Stop, and Codex hooks do not always include a turn ID.
+        if event.kind == .toolCompleted,
+           let existing = self.sessions[sessionKey],
+           self.terminalSessions.contains(sessionKey),
+           event.turnID == nil || event.turnID == existing.turnID
+        {
             return
         }
 
@@ -53,15 +64,26 @@ public struct AgentTaskReducer: Sendable {
             self.terminalTurns.insert(turnKey)
         }
 
+        switch event.kind {
+        case .turnCompleted, .turnFailed, .turnInterrupted:
+            self.terminalSessions.insert(sessionKey)
+        case .turnStarted, .sessionStarted:
+            self.terminalSessions.remove(sessionKey)
+        default:
+            break
+        }
+
+        let previous = self.sessions[sessionKey]
+        let startsTurn = event.kind == .turnStarted || event.kind == .sessionStarted
         self.sessions[sessionKey] = AgentTaskSessionState(
             provider: event.provider,
             sessionID: event.sessionID,
-            turnID: event.turnID,
+            turnID: event.turnID ?? (startsTurn ? nil : previous?.turnID),
             status: status,
             updatedAt: event.occurredAt,
-            projectPath: event.projectPath,
-            transcriptPath: event.transcriptPath,
-            taskTitle: event.taskTitle)
+            projectPath: event.projectPath ?? previous?.projectPath,
+            transcriptPath: event.transcriptPath ?? previous?.transcriptPath,
+            taskTitle: event.taskTitle ?? (startsTurn ? nil : previous?.taskTitle))
     }
 
     public func session(provider: AgentTaskProvider, sessionID: String) -> AgentTaskSessionState? {

@@ -44,10 +44,17 @@ final class AgentTaskStatusStore {
     private var reducer = AgentTaskReducer()
     private var seenEventIDs = Set<String>()
     private var attentionQueue: [AgentTaskAttention] = []
+    @ObservationIgnored private let attentionDismissDelay: (AgentTaskStatus) -> TimeInterval?
+    @ObservationIgnored private var completionMonitorTask: Task<Void, Never>?
+    @ObservationIgnored private var attentionDismissTask: Task<Void, Never>?
 
     private(set) var currentAttention: AgentTaskAttention?
     private(set) var lastEventAtByProvider: [AgentTaskProvider: Date] = [:]
     @ObservationIgnored var onChange: (@MainActor () -> Void)?
+
+    init(attentionDismissDelay: @escaping (AgentTaskStatus) -> TimeInterval? = NotchAttentionPolicy.dismissAfter) {
+        self.attentionDismissDelay = attentionDismissDelay
+    }
 
     var pendingAttentionCount: Int {
         (self.currentAttention == nil ? 0 : 1) + self.attentionQueue.count
@@ -58,10 +65,46 @@ final class AgentTaskStatusStore {
         self.clearResolvedApproval(for: event)
         self.reducer.apply(event)
         self.lastEventAtByProvider[event.provider] = event.occurredAt
+        self.startCompletionMonitoringIfNeeded()
         if let attention = AgentTaskAttention(event: event) {
             self.enqueue(attention)
         }
+        self.scheduleCurrentAttentionDismissal()
         self.onChange?()
+    }
+
+    func stopCompletionMonitoring() {
+        self.completionMonitorTask?.cancel()
+        self.completionMonitorTask = nil
+    }
+
+    private var codexSessionsAwaitingCompletion: [AgentTaskSessionState] {
+        self.reducer.aggregate(for: .codex).sessions.filter {
+            ($0.status == .running || $0.status == .needsApproval) && $0.transcriptPath != nil
+        }
+    }
+
+    private func startCompletionMonitoringIfNeeded() {
+        guard self.completionMonitorTask == nil, !self.codexSessionsAwaitingCompletion.isEmpty else { return }
+        self.completionMonitorTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(2))
+                guard !Task.isCancelled, let sessions = self?.codexSessionsAwaitingCompletion else { return }
+                if sessions.isEmpty { break }
+                let events = await Task.detached(priority: .utility) {
+                    sessions.compactMap { CodexTaskCompletionReader.read(for: $0) }
+                }.value
+                guard !Task.isCancelled else { return }
+                for event in events {
+                    guard let current = self?.reducer.session(provider: .codex, sessionID: event.sessionID),
+                          current.status == .running || current.status == .needsApproval,
+                          event.occurredAt >= current.updatedAt
+                    else { continue }
+                    self?.receive(event)
+                }
+            }
+            self?.completionMonitorTask = nil
+        }
     }
 
     func aggregate(for provider: AgentTaskProvider) -> AgentTaskProviderAggregate {
@@ -77,7 +120,20 @@ final class AgentTaskStatusStore {
         }
         self.currentAttention = nil
         self.promoteNextAttention()
+        self.scheduleCurrentAttentionDismissal()
         self.onChange?()
+    }
+
+    private func scheduleCurrentAttentionDismissal() {
+        self.attentionDismissTask?.cancel()
+        guard let attention = self.currentAttention,
+              let delay = self.attentionDismissDelay(attention.status)
+        else { return }
+        self.attentionDismissTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(delay))
+            guard !Task.isCancelled, self?.currentAttention?.id == attention.id else { return }
+            self?.dismissCurrentAttention()
+        }
     }
 
     private func enqueue(_ attention: AgentTaskAttention) {

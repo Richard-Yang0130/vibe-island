@@ -9,6 +9,7 @@ public enum AgentTaskEventNormalizer {
         "PostToolUse": .toolCompleted,
         "Stop": .turnCompleted,
         "StopFailure": .turnFailed,
+        "Interrupt": .turnInterrupted,
         "SessionEnd": .sessionEnded,
     ]
 
