@@ -17,7 +17,9 @@ Vibe Island 是一个 macOS 原生应用，把 **Codex 和 Claude Code 的任务
 
 ## 产品界面
 
-<img src="docs/images/vibe-island-overview.png" width="900" alt="Vibe Island 原生多任务演示：不同键盘小伙伴对应不同会话，底部显示提供商额度" />
+以下为 Retina 原生高清截图，点击图片可查看原图。
+
+<img src="docs/images/vibe-island-overview-retina.png" width="900" alt="Vibe Island 原生多任务演示：不同键盘小伙伴对应不同会话，底部显示提供商额度" />
 
 *多会话总览。此图来自项目自带的原生演示窗口，使用示例任务和示例额度；保留演示控件，未将其包装为真实账户数据。*
 
@@ -32,7 +34,7 @@ Vibe Island 是一个 macOS 原生应用，把 **Codex 和 Claude Code 的任务
 
 ### 在岛上处理授权
 
-<img src="docs/images/vibe-island-approval.png" width="900" alt="Vibe Island 原生授权演示：显示工具、命令摘要和授权选项" />
+<img src="docs/images/vibe-island-approval-retina.png" width="900" alt="Vibe Island 原生授权演示：显示工具、命令摘要和授权选项" />
 
 *原生组件演示，不执行截图中的请求。授权选项取决于 Agent：Codex 支持拒绝、允许一次；Claude Code 可提供更多选项。*
 
@@ -58,7 +60,7 @@ open Vibeisland.app
 3. 如需直接在岛上处理授权，启用该区域的授权选项。Codex 还需要在 `/hooks` 中信任更新后的 hook。
 4. 开始一个编程任务。悬停查看会话，点击卡片回到任务；需要保持展开时使用置顶按钮。
 
-<img src="docs/images/vibe-island-settings.png" width="900" alt="Vibe Island 菜单栏设置中的任务状态和岛内授权开关" />
+<img src="docs/images/vibe-island-settings-retina.png" width="880" alt="Vibe Island 菜单栏设置中的任务状态和岛内授权开关" />
 
 *当前应用设置截图。任务显示依赖对应 Agent 的事件接入；未连接的 Agent 不会自动出现。*
 
