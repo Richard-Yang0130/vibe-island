@@ -2,8 +2,12 @@ import CodexBarCore
 import Foundation
 
 enum AgentTaskFocusResolver {
-    static func codexThreadURL(provider: AgentTaskProvider, sessionID: String) -> URL? {
-        guard provider == .codex else { return nil }
+    static func codexThreadURL(
+        provider: AgentTaskProvider,
+        sessionID: String,
+        threadReader: CodexThreadMetadataReader = CodexThreadMetadataReader()) -> URL?
+    {
+        guard provider == .codex, threadReader.containsResumableThread(sessionID) else { return nil }
         var components = URLComponents()
         components.scheme = "codex"
         components.host = "threads"

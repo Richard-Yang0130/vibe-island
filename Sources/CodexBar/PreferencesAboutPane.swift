@@ -66,16 +66,12 @@ struct AboutPane: View {
                 AboutLinkRow(
                     icon: "chevron.left.slash.chevron.right",
                     title: L("link_github"),
-                    url: "https://github.com/steipete/CodexBar")
+                    url: "https://github.com/Richard-Yang0130/vibe-island")
                 AboutLinkRow(icon: "globe", title: L("link_website"), url: "https://steipete.me")
                 AboutLinkRow(icon: "bird", title: L("link_twitter"), url: "https://twitter.com/steipete")
                 AboutLinkRow(icon: "envelope", title: L("link_email"), url: "mailto:peter@steipete.me")
             } header: {
                 Text(L("section_links"))
-            } footer: {
-                Text(L("copyright"))
-                    .frame(maxWidth: .infinity)
-                    .multilineTextAlignment(.center)
             }
         }
         .formStyle(.grouped)
@@ -146,7 +142,7 @@ struct AboutPane: View {
     }
 
     private func openProjectHome() {
-        guard let url = URL(string: "https://github.com/steipete/CodexBar") else { return }
+        guard let url = URL(string: "https://github.com/Richard-Yang0130/vibe-island") else { return }
         NSWorkspace.shared.open(url)
     }
 }

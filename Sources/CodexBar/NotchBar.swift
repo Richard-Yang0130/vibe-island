@@ -996,6 +996,12 @@ final class NotchBarController: NSObject {
         }) {
             self.eventMonitors.append(monitor)
         }
+        if let monitor = NSEvent.addLocalMonitorForEvents(matching: clicks, handler: { [weak self] event in
+            self?.handleClickOutside()
+            return event
+        }) {
+            self.eventMonitors.append(monitor)
+        }
         if let monitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown], handler: { [weak self] event in
             guard event.keyCode == 53, let self, self.state.scene.isExpanded else { return event }
             self.collapseNow(allowPendingApproval: true)
@@ -1008,7 +1014,8 @@ final class NotchBarController: NSObject {
     private func handleClickOutside() {
         guard self.state.scene.isExpanded else { return }
         guard !self.hoverZone.contains(NSEvent.mouseLocation) else { return }
-        self.collapseNow()
+        self.setPinned(false)
+        self.collapseNow(allowPendingApproval: true)
     }
 
     private func removeEventMonitors() {

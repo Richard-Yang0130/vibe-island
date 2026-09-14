@@ -20,7 +20,8 @@ public struct CodexThreadMetadataReader: Sendable {
     private let sessionIndexURL: URL?
 
     public init(
-        codexHomeDirectory: URL,
+        codexHomeDirectory: URL = URL(
+            fileURLWithPath: ProcessInfo.processInfo.environment["CODEX_HOME"] ?? NSHomeDirectory() + "/.codex"),
         environment: [String: String] = ProcessInfo.processInfo.environment,
         resolvedWorkingDirectory: URL? = nil,
         fileManager: FileManager = .default)
@@ -43,6 +44,98 @@ public struct CodexThreadMetadataReader: Sendable {
     public init(databaseURL: URL) {
         self.databaseURL = databaseURL
         self.sessionIndexURL = nil
+    }
+
+    public func runningTaskEvents(now: Date = Date()) -> [AgentTaskEvent] {
+        #if canImport(SQLite3) || canImport(CSQLite3)
+        let historyURL = self.databaseURL.deletingLastPathComponent().appendingPathComponent("thread_history_1.sqlite")
+        guard FileManager.default.fileExists(atPath: historyURL.path) else { return [] }
+        var database: OpaquePointer?
+        defer { if let database { sqlite3_close(database) } }
+        guard sqlite3_open_v2(self.databaseURL.path, &database, SQLITE_OPEN_READONLY | SQLITE_OPEN_URI, nil) ==
+            SQLITE_OK
+        else { return [] }
+        var attach: OpaquePointer?
+        defer { sqlite3_finalize(attach) }
+        guard sqlite3_prepare_v2(database, "ATTACH DATABASE ?1 AS history", -1, &attach, nil) == SQLITE_OK
+        else { return [] }
+        let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+        sqlite3_bind_text(attach, 1, historyURL.absoluteString + "?mode=ro", -1, transient)
+        guard sqlite3_step(attach) == SQLITE_DONE else { return [] }
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        // ponytail: recovery covers recently updated threads; widen the window for multi-day offline sessions.
+        let query = """
+        SELECT s.id, s.rollout_path, s.cwd, t.turn_id, t.started_at
+        FROM threads s JOIN history.thread_turns t ON s.id = t.thread_id
+        WHERE s.archived = 0 AND s.updated_at >= ?1 AND t.status = 'inProgress'
+        AND NOT EXISTS (SELECT 1 FROM history.thread_turns n
+            WHERE n.thread_id = t.thread_id AND n.rollout_ordinal > t.rollout_ordinal)
+        """
+        guard sqlite3_prepare_v2(database, query, -1, &statement, nil) == SQLITE_OK else { return [] }
+        sqlite3_bind_double(statement, 1, now.addingTimeInterval(-86400).timeIntervalSince1970)
+        var events: [AgentTaskEvent] = []
+        while sqlite3_step(statement) == SQLITE_ROW {
+            guard let id = Self.string(statement, column: 0), UUID(uuidString: id) != nil,
+                  let path = Self.string(statement, column: 1),
+                  let turnID = Self.string(statement, column: 3),
+                  CodexRolloutFirstLineParser.read(from: URL(fileURLWithPath: path))?.sessionID == id
+            else { continue }
+            let startedAt = Date(timeIntervalSince1970: sqlite3_column_double(statement, 4))
+            let cwd = Self.string(statement, column: 2)
+            let state = AgentTaskSessionState(
+                provider: .codex,
+                sessionID: id,
+                turnID: nil,
+                status: .running,
+                updatedAt: startedAt,
+                projectPath: cwd,
+                transcriptPath: path,
+                taskTitle: nil)
+            // The rollout can contain a terminal event newer than the history database projection.
+            guard CodexTaskCompletionReader.read(for: state) == nil else { continue }
+            events.append(AgentTaskEvent(
+                id: "codex:recovery:\(id):\(turnID)",
+                provider: .codex,
+                sessionID: id,
+                turnID: turnID,
+                kind: .turnStarted,
+                occurredAt: startedAt,
+                projectPath: cwd,
+                transcriptPath: path,
+                taskTitle: nil,
+                source: .codexAppServer))
+        }
+        return events
+        #else
+        return []
+        #endif
+    }
+
+    /// Hook events also come from ephemeral internal runs with no resumable history.
+    public func containsResumableThread(_ sessionID: String) -> Bool {
+        guard UUID(uuidString: sessionID) != nil else { return false }
+        #if canImport(SQLite3) || canImport(CSQLite3)
+        var database: OpaquePointer?
+        defer { if let database { sqlite3_close(database) } }
+        guard sqlite3_open_v2(self.databaseURL.path, &database, SQLITE_OPEN_READONLY, nil) == SQLITE_OK else {
+            return false
+        }
+        var statement: OpaquePointer?
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_prepare_v2(
+            database, "SELECT rollout_path FROM threads WHERE id = ?1 LIMIT 1", -1, &statement, nil) == SQLITE_OK
+        else { return false }
+        let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
+        sqlite3_bind_text(statement, 1, sessionID, -1, transient)
+        guard sqlite3_step(statement) == SQLITE_ROW,
+              let path = Self.string(statement, column: 0),
+              let metadata = CodexRolloutFirstLineParser.read(from: URL(fileURLWithPath: path))
+        else { return false }
+        return metadata.sessionID == sessionID
+        #else
+        return false
+        #endif
     }
 
     public func metadata(for sessionIDs: Set<String>) -> [String: CodexThreadMetadata] {

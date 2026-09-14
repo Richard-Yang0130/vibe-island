@@ -45,6 +45,7 @@ final class AgentTaskStatusStore {
     private var seenEventIDs = Set<String>()
     private var attentionQueue: [AgentTaskAttention] = []
     @ObservationIgnored private let attentionDismissDelay: (AgentTaskStatus) -> TimeInterval?
+    @ObservationIgnored private var recoveryTask: Task<Void, Never>?
     @ObservationIgnored private var completionMonitorTask: Task<Void, Never>?
     @ObservationIgnored private var attentionDismissTask: Task<Void, Never>?
 
@@ -73,7 +74,25 @@ final class AgentTaskStatusStore {
         self.onChange?()
     }
 
+    func startRunningTaskRecovery(
+        read: @escaping @Sendable () -> [AgentTaskEvent] = { CodexThreadMetadataReader().runningTaskEvents() })
+    {
+        guard self.recoveryTask == nil else { return }
+        self.recoveryTask = Task { [weak self] in
+            while !Task.isCancelled {
+                let events = await Task.detached(priority: .utility, operation: read).value
+                guard !Task.isCancelled else { return }
+                for event in events {
+                    self?.receive(event)
+                }
+                try? await Task.sleep(for: .seconds(5))
+            }
+        }
+    }
+
     func stopCompletionMonitoring() {
+        self.recoveryTask?.cancel()
+        self.recoveryTask = nil
         self.completionMonitorTask?.cancel()
         self.completionMonitorTask = nil
     }

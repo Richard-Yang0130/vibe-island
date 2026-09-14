@@ -8,12 +8,14 @@ enum AgentTaskEventIntake {
     static func receive(
         _ envelope: AgentTaskWireEnvelope,
         at receivedAt: Date,
-        into store: AgentTaskStatusStore)
+        into store: AgentTaskStatusStore,
+        threadReader: CodexThreadMetadataReader = CodexThreadMetadataReader())
         -> Bool
     {
         guard let event = AgentTaskEventNormalizer.normalize(envelope, receivedAt: receivedAt) else {
             return false
         }
+        guard event.provider != .codex || threadReader.containsResumableThread(event.sessionID) else { return false }
         store.receive(event)
         return true
     }
@@ -38,6 +40,7 @@ extension StatusItemController {
         self.lastAgentTaskStatusEnabled = self.settings.agentTaskStatusEnabled
         if self.settings.agentTaskStatusEnabled {
             self.startAgentTaskEventServer()
+            if !SettingsStore.isRunningTests { self.agentTaskStatus.startRunningTaskRecovery() }
         } else {
             self.agentTaskStatus.stopCompletionMonitoring()
             self.agentTaskEventServer?.stop()

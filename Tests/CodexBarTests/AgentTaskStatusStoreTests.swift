@@ -6,6 +6,20 @@ import Testing
 @MainActor
 struct AgentTaskStatusStoreTests {
     @Test
+    func `recovery restores an existing running task without a hook`() async throws {
+        let store = AgentTaskStatusStore()
+        store.startRunningTaskRecovery { [.fixture(kind: .turnStarted, sessionID: "existing", turnID: "turn")] }
+        defer { store.stopCompletionMonitoring() }
+        for _ in 0..<50 {
+            if !store.aggregate(for: .codex).sessions.isEmpty { break }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        #expect(store.aggregate(for: .codex).sessions.first?.sessionID == "existing")
+        #expect(store.aggregate(for: .codex).status == .running)
+        #expect(store.currentAttention == nil)
+    }
+
+    @Test
     func `rollout completion repairs a missing stop hook and ignores an older turn`() async throws {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: url) }
