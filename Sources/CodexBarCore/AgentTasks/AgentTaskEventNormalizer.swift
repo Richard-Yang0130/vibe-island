@@ -1,4 +1,3 @@
-import Crypto
 import Foundation
 
 public enum AgentTaskEventNormalizer {
@@ -27,13 +26,19 @@ public enum AgentTaskEventNormalizer {
               let kind = self.hookKinds[hookName]
         else { return nil }
 
-        let occurredAt = self.nonEmptyString(object["timestamp"])
-            .flatMap { ISO8601DateFormatter().date(from: $0) } ?? receivedAt
-        let digest = SHA256.hash(data: envelope.payload)
-            .map { String(format: "%02x", $0) }
-            .joined()
+        let timestamp = self.nonEmptyString(object["timestamp"]).flatMap(self.date)
+        let isHarness = envelope.provider == .deepseekHarness
+        let sequence = object["harness_event_seq"] as? Int
+        if isHarness {
+            guard envelope.eventID != nil, timestamp != nil,
+                  let sequence, sequence >= 0,
+                  self.nonEmptyString(object["turn_id"]) != nil,
+                  self.nonEmptyString(object["harness_event_type"]) != nil
+            else { return nil }
+        }
+        let occurredAt = timestamp ?? receivedAt
         return AgentTaskEvent(
-            id: "\(envelope.provider.rawValue):\(digest)",
+            id: "\(envelope.provider.rawValue):\((envelope.eventID ?? UUID()).uuidString)",
             provider: envelope.provider,
             sessionID: sessionID,
             turnID: self.nonEmptyString(object["turn_id"]),
@@ -41,8 +46,16 @@ public enum AgentTaskEventNormalizer {
             occurredAt: occurredAt,
             projectPath: self.nonEmptyString(object["cwd"]),
             transcriptPath: self.nonEmptyString(object["transcript_path"]),
-            taskTitle: nil,
-            source: .hook)
+            taskTitle: isHarness ? self.nonEmptyString(object["task_title"]).map { String($0.prefix(160)) } : nil,
+            source: isHarness ? .harnessBridge : .hook,
+            sequence: isHarness ? sequence : nil)
+    }
+
+    private static func date(_ value: String) -> Date? {
+        let formatter = ISO8601DateFormatter()
+        if let date = formatter.date(from: value) { return date }
+        formatter.formatOptions.insert(.withFractionalSeconds)
+        return formatter.date(from: value)
     }
 
     private static func nonEmptyString(_ value: Any?) -> String? {

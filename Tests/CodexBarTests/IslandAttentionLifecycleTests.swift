@@ -64,6 +64,21 @@ struct IslandAttentionLifecycleTests {
     }
 
     @Test
+    func `hovered overview collapses after pointer leaves even when panel has focus or prior failure`() {
+        for status in [AgentTaskStatus.running, .completed, .failed, .interrupted, .disconnected] {
+            #expect(IslandScenePolicy.canAutomaticallyCollapse(
+                scene: .overview,
+                status: status,
+                hasPendingApproval: false,
+                pointerInside: false,
+                keyboardFocus: true,
+                pinned: false,
+                elapsed: 10,
+                openedByHover: true))
+        }
+    }
+
+    @Test
     func `new approvals can interrupt expanded scenes and acknowledgement`() {
         for current in [IslandScene.compact, .overview, .done, .ask, .ack, .approval] {
             #expect(IslandScenePolicy.canPresentAttention(.approval, from: current))

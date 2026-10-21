@@ -2,8 +2,22 @@
 
 ## 0.46.1 — Unreleased
 
+### Added
+- DeepSeek Harness desktop: task status and completion reminders in the island, with a separate provider identity and blue accent.
+- Harness: load a local observer plugin through the desktop profile, recover active tasks at startup, and reconcile state after a dropped connection using a private heartbeat snapshot.
+
 ### Changed
 - About: link the Website entry to codex.bar.
+- Task status settings now detect Harness alongside Codex and Claude. Harness task cards open the desktop app; approvals remain in Harness, and opening a specific conversation is not yet supported.
+- Harness plugin installation preserves existing profile settings, uses content-versioned files to avoid stale CommonJS imports, and writes canonical macOS socket paths.
+
+### Fixed
+- Island: clear completed and interrupted task records independently, including queued reminders, while preserving unrelated running tasks.
+- Task events: deduplicate retransmissions without suppressing later turns, and reject late events from an earlier turn.
+- Transport: validate private, user-owned socket endpoints and refuse unsafe socket paths and permissions.
+- Approvals: confirm delivery only after the helper acknowledges receipt; keep a recovery action available when delivery fails.
+- Task navigation: retain the focus index when the Agent Sessions menu is disabled, and keep full command summaries scrollable in approval views.
+- Harness: restore running tasks after repeated disconnects and after dismissing a disconnect reminder; refuse to overwrite an unreadable profile file.
 
 ## 0.46.0 — 2026-07-29
 

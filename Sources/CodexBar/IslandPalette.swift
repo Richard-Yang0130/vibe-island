@@ -47,6 +47,7 @@ enum IslandAgentColor {
         switch provider {
         case .claude: Color(red: 0xD9 / 255, green: 0x77 / 255, blue: 0x57 / 255)
         case .codex: Color(red: 0x10 / 255, green: 0xA3 / 255, blue: 0x7F / 255)
+        case .deepseekHarness: Color(red: 0x4D / 255, green: 0x6B / 255, blue: 0xFE / 255)
         }
     }
 
@@ -54,6 +55,7 @@ enum IslandAgentColor {
         switch provider {
         case .claude: "Claude"
         case .codex: "Codex"
+        case .deepseekHarness: "DeepSeek Harness"
         }
     }
 }

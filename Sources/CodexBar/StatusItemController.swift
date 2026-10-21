@@ -1085,10 +1085,10 @@ extension StatusItemController {
                         self?.notchSurfaces?.refreshAll()
                     },
                     onOpenTask: { [weak self] card in
-                        self?.openAgentTask(provider: card.provider, sessionID: card.sessionID)
+                        self?.openAgentTask(provider: card.provider, sessionID: card.sessionID) ?? false
                     },
                     onDecideApproval: { [weak self] request, action in
-                        self?.agentTaskApprovals.resolve(id: request.id, action: action)
+                        await self?.agentTaskApprovals.submit(id: request.id, action: action) ?? false
                     },
                     onDismissAttention: { [weak self] in
                         self?.agentTaskStatus.dismissCurrentAttention()

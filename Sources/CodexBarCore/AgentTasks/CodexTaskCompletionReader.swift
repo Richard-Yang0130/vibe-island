@@ -30,9 +30,8 @@ public enum CodexTaskCompletionReader {
             guard type != "task_started",
                   let timestamp = object["timestamp"] as? String,
                   let date = formatter.date(from: timestamp) ?? ISO8601DateFormatter().date(from: timestamp),
-                  date >= state.updatedAt,
                   let turnID = payload["turn_id"] as? String,
-                  state.turnID == nil || state.turnID == turnID
+                  state.containsCurrentTurn(at: date, turnID: turnID)
             else { return nil }
             let kind: AgentTaskEventKind = type == "turn_aborted" ? .turnInterrupted
                 : (payload["error"] == nil || payload["error"] is NSNull ? .turnCompleted : .turnFailed)

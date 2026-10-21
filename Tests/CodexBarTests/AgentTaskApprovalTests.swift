@@ -20,12 +20,20 @@ private let suggestions = Data("""
 struct AgentTaskApprovalHookOutputTests {
     @Test
     func `both agents receive the same envelope shape`() throws {
-        for provider in AgentTaskProvider.allCases {
+        for provider in [AgentTaskProvider.codex, .claude] {
             let data = try #require(AgentTaskApprovalHookOutput.encode(.allowedOnce, provider: provider))
             let specific = try #require(json(data)["hookSpecificOutput"] as? [String: Any])
             #expect(specific["hookEventName"] as? String == "PermissionRequest")
             #expect((specific["decision"] as? [String: Any])?["behavior"] as? String == "allow")
         }
+    }
+
+    @Test
+    func `Harness offers no island approval actions or hook decision output`() {
+        #expect(AgentTaskApprovalCapability.actions(
+            provider: .deepseekHarness,
+            hasPermissionSuggestions: true).isEmpty)
+        #expect(AgentTaskApprovalHookOutput.encode(.allowedOnce, provider: .deepseekHarness) == nil)
     }
 
     @Test

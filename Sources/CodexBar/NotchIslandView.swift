@@ -50,11 +50,13 @@ enum NotchIndicatorState: Equatable {
 enum NotchIndicatorColor: String, Equatable {
     case claude = "#D97757"
     case codex = "#F5F5F5"
+    case harness = "#4D6BFE"
 
     var swiftUIColor: Color {
         switch self {
         case .claude: Color(red: 217 / 255, green: 119 / 255, blue: 87 / 255)
         case .codex: Color(red: 245 / 255, green: 245 / 255, blue: 245 / 255)
+        case .harness: Color(red: 77 / 255, green: 107 / 255, blue: 254 / 255)
         }
     }
 }
@@ -81,7 +83,11 @@ struct NotchLightPresentation: Equatable, Identifiable {
         -> NotchLightPresentation
     {
         let side: NotchIndicatorSide = provider == .claude ? .left : .right
-        let color: NotchIndicatorColor = provider == .claude ? .claude : .codex
+        let color: NotchIndicatorColor = switch provider {
+        case .claude: .claude
+        case .codex: .codex
+        case .deepseekHarness: .harness
+        }
         guard isConfigured else {
             return NotchLightPresentation(provider: provider, side: side, color: color, state: .hidden)
         }
@@ -113,12 +119,18 @@ struct NotchCollapsedPresentation: Equatable {
     static func make(
         claude: AgentTaskStatus,
         codex: AgentTaskStatus,
+        harness: AgentTaskStatus = .idle,
         claudeConfigured: Bool = true,
         codexConfigured: Bool = true,
+        harnessConfigured: Bool = false,
         attention: AgentTaskAttention? = nil)
         -> NotchCollapsedPresentation
     {
-        NotchCollapsedPresentation(
+        let harnessAttention = attention?.event.provider == .deepseekHarness
+            && attention?.status.requiresUserAction == true
+        let useHarness = harnessConfigured && (!codexConfigured || harness.priority > codex.priority
+            || (harness.priority == codex.priority && harnessAttention))
+        return NotchCollapsedPresentation(
             lights: [
                 NotchLightPresentation.make(
                     provider: .claude,
@@ -126,9 +138,9 @@ struct NotchCollapsedPresentation: Equatable {
                     isConfigured: claudeConfigured,
                     attention: attention),
                 NotchLightPresentation.make(
-                    provider: .codex,
-                    status: codex,
-                    isConfigured: codexConfigured,
+                    provider: useHarness ? .deepseekHarness : .codex,
+                    status: useHarness ? harness : codex,
+                    isConfigured: useHarness ? harnessConfigured : codexConfigured,
                     attention: attention),
             ],
             visibleText: "")
@@ -216,7 +228,8 @@ struct NotchIslandView: View {
                     togglePinned: self.actions.togglePinned,
                     selectProvider: self.actions.selectProvider,
                     providers: self.state.enabledProviders,
-                    pinned: self.state.isPinned))
+                    pinned: self.state.isPinned),
+                failedApproval: self.state.failedApproval)
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)

@@ -11,9 +11,11 @@
   <p><a href="#安装">安装</a> · <a href="#开始使用">开始使用</a> · <a href="#产品界面">产品界面</a> · <a href="https://github.com/Richard-Yang0130/vibe-island/issues">反馈问题</a></p>
 </div>
 
-Vibe Island 是一个 macOS 原生应用，把 **Codex 和 Claude Code 的任务状态**放到屏幕顶部。任务运行时收起成小岛，需要查看、授权或回到会话时再展开。多个任务同时跑，也能在同一处找到它们。
+Vibe Island 是一个 macOS 原生应用，把 **Codex、Claude Code 和 DeepSeek Harness 的任务状态**放到屏幕顶部。任务运行时收起成小岛，需要查看、处理支持的授权请求或回到应用时再展开。多个任务同时跑，也能在同一处找到它们。
 
 项目由 Perch 更名而来，基于 [CodexBar](https://github.com/steipete/CodexBar) 开发，保留多提供商用量与费用查看能力。应用包名为 `Vibeisland.app`，部分设置页、CLI 和源码标识仍沿用 CodexBar。
+
+最新源码已接入 **DeepSeek Harness 桌面端**：任务状态、完成提醒、启动和断连恢复均可使用。启用任务状态后会自动配置本地插件；审批继续在 Harness 中处理。详见 [更新日志](CHANGELOG.md) 和 [Harness 接入说明](Scripts/deepseek-harness/README.md)。
 
 ## 产品界面
 
@@ -26,7 +28,7 @@ Vibe Island 是一个 macOS 原生应用，把 **Codex 和 Claude Code 的任务
 ### 一个地方，看清任务状态
 
 - **运行、等待、完成**：收起时用简短状态和指示灯提示，展开后查看具体会话。
-- **多会话列表**：区分 Codex 与 Claude Code，点击任务回到对应会话；Codex 入口会检查会话是否真实存在、可以恢复。
+- **多会话列表**：区分 Codex、Claude Code 与 DeepSeek Harness，显示运行、等待和结束状态；Codex 入口检查会话是否可以恢复，Harness 入口唤起桌面应用。
 - **键盘小伙伴**：十种角色自动分配并持久绑定任务，角色动效跟随任务状态，不监听你的键盘输入。
 - **需要你时再处理**：支持授权请求和等待回答的提醒。开启岛内授权后，可在支持的 hook 流程里直接回应请求。
 - **用量一起看**：查看当前提供商的额度、重置倒计时，以及支持的费用记录。具体指标取决于提供商和登录方式。
@@ -56,7 +58,7 @@ open Vibeisland.app
 ## 开始使用
 
 1. 打开设置，启用你使用的提供商，并按对应页面配置登录来源。
-2. 在 **设置 → 菜单栏 → 任务状态**中启用灵动岛，按应用提示配置 Codex / Claude Code 的任务 hooks。
+2. 在 **设置 → 菜单栏 → 任务状态**中启用灵动岛，按应用提示配置 Codex / Claude Code 的任务 hooks；检测到 DeepSeek Harness 桌面端时，自动加载本地状态插件。
 3. 如需直接在岛上处理授权，启用该区域的授权选项。Codex 还需要在 `/hooks` 中信任更新后的 hook。
 4. 开始一个编程任务。悬停查看会话，点击卡片回到任务；需要保持展开时使用置顶按钮。
 
@@ -66,7 +68,9 @@ open Vibeisland.app
 
 ## 提供商与数据来源
 
-灵动岛的任务事件接入面向 **Codex、Claude Code**；用量查看还支持 Cursor、Gemini、DeepSeek、z.ai、MiniMax 等提供商。支持查看额度不等于支持该提供商的任务事件。
+灵动岛的任务事件接入面向 **Codex、Claude Code、DeepSeek Harness 桌面端**。Harness 支持任务状态、完成提醒、启动和断连恢复，审批继续在 Harness 原界面处理；当前点击入口唤起应用，尚不定位指定聊天。接入说明和复现验证见 [Harness 接入记录](Scripts/deepseek-harness/README.md)。用量查看还支持 Cursor、Gemini、DeepSeek、z.ai、MiniMax 等提供商。支持查看额度不等于支持该提供商的任务事件。
+
+用量模块当前注册 66 个提供商 ID，具体数据来源与支持范围见下列文档。
 
 | 需要配置什么 | 文档 |
 | --- | --- |

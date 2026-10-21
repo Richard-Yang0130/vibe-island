@@ -78,7 +78,7 @@ struct NotchTaskDetailPlan {
         let status = attention?.status ?? activeSession?.status ?? .idle
         let path = event?.projectPath ?? activeSession?.projectPath
         self.provider = provider
-        self.providerName = provider == .codex ? "Codex" : "Claude"
+        self.providerName = IslandAgentColor.displayName(for: provider)
         self.statusText = status.displayName
         self.eventTitle = if hidePersonalInfo {
             status.displayName
@@ -356,6 +356,7 @@ final class NotchBarState {
     var activeSession: AgentTaskSessionState?
     var pendingApproval: AgentTaskPendingApproval?
     var hidePersonalInfo = false
+    var failedApproval: IslandApprovalRequest?
     var notchSize = CGSize(width: 180, height: 32)
     var hasPhysicalNotch = true
     var fixtureIndicatorScenario: IslandShellFixtureIndicatorScenario?
@@ -415,8 +416,10 @@ extension NotchBarState {
         return NotchCollapsedPresentation.make(
             claude: self.taskAggregates[.claude]?.status ?? .idle,
             codex: self.taskAggregates[.codex]?.status ?? .idle,
+            harness: self.taskAggregates[.deepseekHarness]?.status ?? .idle,
             claudeConfigured: self.hookHealth[.claude]?.isConfiguredForTaskStatus == true,
             codexConfigured: self.hookHealth[.codex]?.isConfiguredForTaskStatus == true,
+            harnessConfigured: self.hookHealth[.deepseekHarness]?.isConfiguredForTaskStatus == true,
             attention: self.attention)
     }
 
@@ -465,8 +468,8 @@ final class NotchBarController: NSObject {
     private let onRefresh: @MainActor () -> Void
     private let onSettings: @MainActor () -> Void
     private let onSelectProvider: @MainActor (UsageProvider) -> Void
-    private let onOpenTask: @MainActor (IslandSessionCard) -> Void
-    private let onDecideApproval: @MainActor (IslandApprovalRequest, AgentTaskApprovalAction) -> Void
+    private let onOpenTask: @MainActor (IslandSessionCard) -> Bool
+    private let onDecideApproval: @MainActor (IslandApprovalRequest, AgentTaskApprovalAction) async -> Bool
     private let onDismissAttention: @MainActor () -> Void
     private let refreshMonitor: MenuCardRefreshMonitor?
     private let launchOptions = IslandShellLaunchOptions.current
@@ -479,7 +482,9 @@ final class NotchBarController: NSObject {
     private var dwellTask: Task<Void, Never>?
     private var collapseTask: Task<Void, Never>?
     private var acknowledgeTask: Task<Void, Never>?
+    private var approvalSubmissionTask: Task<Void, Never>?
     private var isPointerInside = false
+    private var openedByHover = false
     private var hoverZone: CGRect = .zero
     private var lastCollapsedAt: Date?
     private var scenePresentedAt = Date()
@@ -513,8 +518,8 @@ final class NotchBarController: NSObject {
         onRefresh: @escaping @MainActor () -> Void,
         onSettings: @escaping @MainActor () -> Void,
         onSelectProvider: @escaping @MainActor (UsageProvider) -> Void,
-        onOpenTask: @escaping @MainActor (IslandSessionCard) -> Void,
-        onDecideApproval: @escaping @MainActor (IslandApprovalRequest, AgentTaskApprovalAction) -> Void,
+        onOpenTask: @escaping @MainActor (IslandSessionCard) -> Bool,
+        onDecideApproval: @escaping @MainActor (IslandApprovalRequest, AgentTaskApprovalAction) async -> Bool,
         onDismissAttention: @escaping @MainActor () -> Void)
     {
         self.displayID = displayID
@@ -602,12 +607,21 @@ final class NotchBarController: NSObject {
                     return
                 }
                 guard self.state.pendingApproval?.id == request.id else { return }
-                self.onDecideApproval(request, action)
-                self.refreshPillContent()
-                if self.state.pendingApproval == nil {
-                    self.acknowledge(Self.acknowledgement(for: action))
-                } else if self.state.pendingApproval?.id != request.id {
-                    self.setScene(.approval)
+                guard self.approvalSubmissionTask == nil else { return }
+                self.approvalSubmissionTask = Task { [weak self] in
+                    guard let self else { return }
+                    let delivered = await self.onDecideApproval(request, action)
+                    guard !Task.isCancelled else { return }
+                    self.approvalSubmissionTask = nil
+                    self.refreshPillContent()
+                    if !delivered {
+                        self.state.failedApproval = request
+                        self.setScene(.approval)
+                    } else if self.state.pendingApproval == nil {
+                        self.acknowledge(L("island_approval_sent") + " · " + Self.acknowledgement(for: action))
+                    } else {
+                        self.setScene(.approval)
+                    }
                 }
             },
             settings: { [weak self] in
@@ -623,7 +637,8 @@ final class NotchBarController: NSObject {
             toggleExpanded: { [weak self] in self?.toggle() },
             openTask: { [weak self] card in
                 guard let self else { return }
-                self.onOpenTask(card)
+                guard self.onOpenTask(card) else { return }
+                self.state.failedApproval = nil
                 self.collapseNow(allowPendingApproval: true)
             },
             // Redundant entry signal: AppKit tracking areas still fire when a mouse-moved event is
@@ -697,7 +712,7 @@ final class NotchBarController: NSObject {
     }
 
     func collapseAttention() {
-        guard self.state.scene.demandsAttention, self.state.pendingApproval == nil,
+        guard self.state.scene.demandsAttention, self.state.pendingApproval == nil, self.state.failedApproval == nil,
               !self.isPointerInside, !self.panel.isKeyWindow, !self.state.isPinned else { return }
         self.collapseNow(allowPendingApproval: true)
     }
@@ -705,12 +720,20 @@ final class NotchBarController: NSObject {
     /// Used by the global hotkey and by clicks on the band.
     func toggle() {
         if self.state.scene.isExpanded {
+            if self.state.failedApproval != nil {
+                self.state.failedApproval = nil
+                if self.state.pendingApproval != nil {
+                    self.setScene(.approval)
+                    return
+                }
+            }
             self.collapseNow(allowPendingApproval: true)
         } else if self.state.scene == .compact {
             guard NotchSurfaceVisibilityPolicy.shouldExpand(
                 trigger: .click,
                 isFullscreen: self.isFullscreen())
             else { return }
+            self.openedByHover = false
             self.setScene(self.expansionScene)
             self.startPointerWatchdog()
         }
@@ -722,7 +745,7 @@ final class NotchBarController: NSObject {
     /// them, opening the island must show that, not bury it behind an overview they then have to
     /// navigate out of.
     private var expansionScene: IslandScene {
-        if self.state.pendingApproval != nil { return .approval }
+        if self.state.pendingApproval != nil || self.state.failedApproval != nil { return .approval }
         return IslandScenePolicy.manualExpansion(for: self.state.islandContent.leadStatus)
     }
 
@@ -736,7 +759,7 @@ final class NotchBarController: NSObject {
     }
 
     private func raiseSceneIfNeeded(attention: AgentTaskAttention? = nil) {
-        guard !self.launchOptions.isFixture else { return }
+        guard !self.launchOptions.isFixture, self.state.failedApproval == nil else { return }
         // A blocking request beats any telemetry-derived guess: something is literally waiting.
         let raised: IslandScene
         if self.state.pendingApproval != nil {
@@ -755,6 +778,7 @@ final class NotchBarController: NSObject {
             ? attention.map { "event:\($0.event.provider.rawValue):\($0.id)" } ?? self.attentionKey
             : self.attentionKey
         guard let key, self.presentedAttention.markIfNew(key) else { return }
+        self.openedByHover = false
         self.setScene(raised)
         self.startPointerWatchdog()
     }
@@ -898,6 +922,7 @@ final class NotchBarController: NSObject {
                   self.state.scene == .compact
             else { return }
             self.dwellTask = nil
+            self.openedByHover = true
             self.setScene(self.expansionScene)
         }
     }
@@ -920,7 +945,8 @@ final class NotchBarController: NSObject {
             pointerInside: self.isPointerInside,
             keyboardFocus: self.panel.isKeyWindow,
             pinned: self.state.isPinned,
-            elapsed: Date().timeIntervalSince(self.scenePresentedAt))
+            elapsed: Date().timeIntervalSince(self.scenePresentedAt),
+            openedByHover: self.openedByHover)
     }
 
     private func collapseNow(allowPendingApproval: Bool = false) {
@@ -940,6 +966,7 @@ final class NotchBarController: NSObject {
     /// silhouette the user actually sees.
     private func setScene(_ scene: IslandScene) {
         if self.state.scene != scene { self.scenePresentedAt = Date() }
+        if !scene.isExpanded { self.openedByHover = false }
         withAnimation(IslandShellMotion.container(reduceMotion: self.state.reduceMotion)) {
             self.state.scene = scene
             if self.launchOptions.isFixture {
@@ -957,6 +984,8 @@ final class NotchBarController: NSObject {
     }
 
     private func cancelPendingWork() {
+        self.approvalSubmissionTask?.cancel()
+        self.approvalSubmissionTask = nil
         self.dwellTask?.cancel()
         self.dwellTask = nil
         self.collapseTask?.cancel()

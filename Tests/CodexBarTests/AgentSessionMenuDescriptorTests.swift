@@ -85,29 +85,100 @@ struct AgentSessionMenuDescriptorTests {
     }
 
     @Test
+    func `task status retains local focus details while the sessions menu is disabled`() {
+        let settings = testSettingsStore(suiteName: "AgentSessionMenuDescriptorTests-task-focus-index")
+        settings.agentSessionsEnabled = false
+        settings.agentTaskStatusEnabled = true
+        settings.refreshFrequency = .manual
+        settings.adaptiveActivityScanConsent = .declined
+        let store = AgentSessionsStore(settings: settings)
+        let session = Self.session(id: "task", host: "local", activity: Date())
+
+        store.applyLocalScanResult([session])
+        store.settingsDidChange(remoteConfigurationChanged: false)
+
+        #expect(store.localMonitoringEnabled)
+        #expect(store.localSessions == [session])
+        #expect(!settings.agentSessionsEnabled)
+    }
+
+    @Test
+    func `disabling the final local consumer clears focus details and activity`() {
+        let settings = testSettingsStore(suiteName: "AgentSessionMenuDescriptorTests-task-focus-clear")
+        settings.agentSessionsEnabled = false
+        settings.agentTaskStatusEnabled = true
+        settings.refreshFrequency = .manual
+        let store = AgentSessionsStore(settings: settings)
+        store.applyLocalScanResult([Self.session(id: "task", host: "local", activity: Date())])
+        #expect(!store.localSessions.isEmpty)
+
+        settings.agentTaskStatusEnabled = false
+        store.settingsDidChange(remoteConfigurationChanged: false)
+
+        #expect(!store.localMonitoringEnabled)
+        #expect(store.localSessions.isEmpty)
+        #expect(store.latestLocalActivityAt == nil)
+    }
+
+    @Test
+    func `disabling task status leaves consenting adaptive monitoring with timestamp only`() {
+        let settings = testSettingsStore(suiteName: "AgentSessionMenuDescriptorTests-task-to-adaptive")
+        settings.agentSessionsEnabled = false
+        settings.agentTaskStatusEnabled = true
+        settings.refreshFrequency = .adaptiveAgentAware
+        settings.adaptiveActivityScanConsent = .allowed
+        let store = AgentSessionsStore(settings: settings)
+        let activity = Date(timeIntervalSinceReferenceDate: 200)
+        store.applyLocalScanResult([Self.session(id: "task", host: "local", activity: activity)])
+        #expect(!store.localSessions.isEmpty)
+
+        settings.agentTaskStatusEnabled = false
+        store.settingsDidChange(remoteConfigurationChanged: false)
+
+        #expect(store.localMonitoringEnabled)
+        #expect(store.localSessions.isEmpty)
+        #expect(store.latestLocalActivityAt == activity)
+    }
+
+    @Test
     func `adaptive-only local scan pauses under power and thermal constraints`() {
         #expect(AgentSessionsStore.shouldScanLocally(
             agentSessionsEnabled: false,
+            agentTaskStatusEnabled: false,
             adaptiveActivityScanningEnabled: true,
             lowPowerModeEnabled: false,
             thermalState: .nominal))
         #expect(!AgentSessionsStore.shouldScanLocally(
             agentSessionsEnabled: false,
+            agentTaskStatusEnabled: false,
             adaptiveActivityScanningEnabled: true,
             lowPowerModeEnabled: true,
             thermalState: .nominal))
         #expect(!AgentSessionsStore.shouldScanLocally(
             agentSessionsEnabled: false,
+            agentTaskStatusEnabled: false,
             adaptiveActivityScanningEnabled: true,
             lowPowerModeEnabled: false,
             thermalState: .serious))
         #expect(!AgentSessionsStore.shouldScanLocally(
             agentSessionsEnabled: false,
+            agentTaskStatusEnabled: false,
             adaptiveActivityScanningEnabled: false,
             lowPowerModeEnabled: false,
             thermalState: .nominal))
         #expect(AgentSessionsStore.shouldScanLocally(
             agentSessionsEnabled: true,
+            agentTaskStatusEnabled: false,
+            adaptiveActivityScanningEnabled: false,
+            lowPowerModeEnabled: true,
+            thermalState: .critical))
+    }
+
+    @Test
+    func `explicit task focus monitoring works without adaptive consent under power constraints`() {
+        #expect(AgentSessionsStore.shouldScanLocally(
+            agentSessionsEnabled: false,
+            agentTaskStatusEnabled: true,
             adaptiveActivityScanningEnabled: false,
             lowPowerModeEnabled: true,
             thermalState: .critical))

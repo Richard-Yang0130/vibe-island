@@ -1,4 +1,6 @@
 import CodexBarCore
+import CryptoKit
+import Darwin
 import Foundation
 import Observation
 
@@ -17,6 +19,7 @@ enum AgentTaskHookInstallerError: Error {
 struct AgentTaskHookInstaller {
     let homeDirectory: URL
     let helperURL: URL
+    let harnessPluginURL: URL
     /// Whether `PermissionRequest` is installed as a blocking handler. Off keeps every hook
     /// fire-and-forget, which is the pre-approvals behaviour.
     let approvalsEnabled: Bool
@@ -24,11 +27,15 @@ struct AgentTaskHookInstaller {
     init(
         homeDirectory: URL = FileManager.default.homeDirectoryForCurrentUser,
         helperURL: URL = Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/CodexBarCLI"),
-        approvalsEnabled: Bool = false)
+        approvalsEnabled: Bool = false,
+        harnessPluginURL: URL? = nil)
     {
         self.homeDirectory = homeDirectory
         self.helperURL = helperURL
         self.approvalsEnabled = approvalsEnabled
+        self.harnessPluginURL = harnessPluginURL
+            ?? Bundle.module.url(forResource: "HarnessBridge", withExtension: "cjs")
+            ?? Bundle.main.bundleURL.appendingPathComponent("Contents/Resources/HarnessBridge.cjs")
     }
 
     func configURL(for provider: AgentTaskProvider) -> URL {
@@ -37,6 +44,8 @@ struct AgentTaskHookInstaller {
             self.homeDirectory.appendingPathComponent(".codex/hooks.json")
         case .claude:
             self.homeDirectory.appendingPathComponent(".claude/settings.json")
+        case .deepseekHarness:
+            self.homeDirectory.appendingPathComponent(".dsh/profiles/desktop/cordis.patch.yml")
         }
     }
 
@@ -44,6 +53,17 @@ struct AgentTaskHookInstaller {
         let configURL = self.configURL(for: provider)
         guard let data = try? Data(contentsOf: configURL) else {
             return AgentTaskHookInspection(provider: provider, document: .notInstalled, configURL: configURL)
+        }
+        if provider == .deepseekHarness {
+            let managed = HarnessTaskBridgeDocument.containsManagedBridge(data)
+            let expected = try? self.harnessDocument(data: data)
+            let installedPlugin = try? self.harnessInstalledPluginURL()
+            let pluginExists = installedPlugin.map { FileManager.default.fileExists(atPath: $0.path) } == true
+            return AgentTaskHookInspection(
+                provider: provider,
+                document: !managed ? .notInstalled : expected == data && pluginExists ? .installed : .needsRepair,
+                configURL: configURL,
+                hasManagedHooks: managed && expected == data && pluginExists)
         }
         let document = AgentTaskHookDocument.inspect(
             provider: provider,
@@ -60,20 +80,69 @@ struct AgentTaskHookInstaller {
 
     func install(_ provider: AgentTaskProvider) throws {
         let destination = self.configURL(for: provider)
-        let current = (try? Data(contentsOf: destination)) ?? Data()
-        let installed = try AgentTaskHookDocument.install(
-            provider: provider,
-            data: current,
-            helperPath: self.helperURL.path,
-            approvalsEnabled: self.approvalsEnabled)
+        let current: Data
+        do {
+            current = try Data(contentsOf: destination)
+        } catch CocoaError.fileReadNoSuchFile {
+            current = Data()
+        }
+        if provider == .deepseekHarness {
+            let plugin = try self.harnessInstalledPluginURL()
+            try FileManager.default.createDirectory(
+                at: plugin.deletingLastPathComponent(),
+                withIntermediateDirectories: true,
+                attributes: [.posixPermissions: 0o700])
+            try self.replaceAtomically(Data(contentsOf: self.harnessPluginURL), at: plugin)
+        }
+        let installed = try provider == .deepseekHarness ? self.harnessDocument(data: current) : AgentTaskHookDocument
+            .install(
+                provider: provider,
+                data: current,
+                helperPath: self.helperURL.path,
+                approvalsEnabled: self.approvalsEnabled)
         try self.replaceAtomically(installed, at: destination)
     }
 
     func remove(_ provider: AgentTaskProvider) throws {
         let destination = self.configURL(for: provider)
         guard let current = try? Data(contentsOf: destination) else { return }
-        let removed = try AgentTaskHookDocument.uninstall(provider: provider, data: current)
+        let removed = try provider == .deepseekHarness
+            ? HarnessTaskBridgeDocument.remove(data: current)
+            : AgentTaskHookDocument.uninstall(provider: provider, data: current)
         try self.replaceAtomically(removed, at: destination)
+    }
+
+    private func harnessDocument(data: Data) throws -> Data {
+        guard FileManager.default.fileExists(atPath: self.harnessPluginURL.path) else {
+            throw AgentTaskHookInstallerError.writeFailed
+        }
+        return try HarnessTaskBridgeDocument.install(
+            data: data,
+            pluginPath: self.harnessInstalledPluginURL().path,
+            socketPath: self.canonicalHarnessPath(AgentTaskSocketPath.currentUserPath),
+            statePath: self.canonicalHarnessPath(HarnessTaskSnapshotReader.path))
+    }
+
+    private func canonicalHarnessPath(_ path: String) throws -> String {
+        var ancestor = URL(fileURLWithPath: path).deletingLastPathComponent()
+        var suffix = [URL(fileURLWithPath: path).lastPathComponent]
+        while !FileManager.default.fileExists(atPath: ancestor.path), ancestor.path != "/" {
+            suffix.insert(ancestor.lastPathComponent, at: 0)
+            ancestor.deleteLastPathComponent()
+        }
+        guard let pointer = realpath(ancestor.path, nil) else { throw AgentTaskHookInstallerError.writeFailed }
+        defer { free(pointer) }
+        // Foundation normalizes /private/var back to /var; retain POSIX realpath spelling for Node.
+        let root = String(cString: pointer)
+        return root + "/" + suffix.joined(separator: "/")
+    }
+
+    private func harnessInstalledPluginURL() throws -> URL {
+        // Harness caches imported CommonJS modules until its host exits; a content path reloads upgrades.
+        let digest = try SHA256.hash(data: Data(contentsOf: self.harnessPluginURL))
+            .prefix(12).map { String(format: "%02x", $0) }.joined()
+        return self.homeDirectory.appendingPathComponent("Library/Application Support/Vibeisland/Harness")
+            .appendingPathComponent("HarnessBridge-\(digest).cjs")
     }
 
     private func replaceAtomically(_ data: Data, at destination: URL) throws {

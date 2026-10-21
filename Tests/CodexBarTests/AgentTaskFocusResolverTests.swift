@@ -5,6 +5,101 @@ import Testing
 @testable import CodexBar
 
 struct AgentTaskFocusResolverTests {
+    @Test(arguments: [
+        SessionFocusResult.focused,
+        .activatedApplicationOnly,
+        .failed,
+    ])
+    @MainActor
+    func `task opening reports the exact provider session focus result`(_ result: SessionFocusResult) {
+        let exact = AgentSession.fixture(id: "task", provider: .claude, cwd: "/other")
+        let sessions = [
+            AgentSession.fixture(id: "task", provider: .codex, cwd: "/repo"),
+            AgentSession.fixture(id: "other", provider: .claude, cwd: "/repo"),
+            exact,
+        ]
+        var focused: AgentSession?
+
+        let opened = AgentTaskFocusResolver.open(
+            provider: .claude,
+            sessionID: "task",
+            sessions: sessions,
+            openThread: {
+                Issue.record("Claude tasks must not open a Codex thread")
+                return true
+            },
+            focus: { session in
+                focused = session
+                return result
+            })
+
+        #expect(focused == exact)
+        #expect(opened == (result != .failed))
+    }
+
+    @Test
+    @MainActor
+    func `unknown task identity never focuses a different provider or same cwd session`() {
+        let opened = AgentTaskFocusResolver.open(
+            provider: .claude,
+            sessionID: "missing",
+            sessions: [
+                AgentSession.fixture(id: "missing", provider: .codex, cwd: "/repo"),
+                AgentSession.fixture(id: "other", provider: .claude, cwd: "/repo"),
+            ],
+            openThread: {
+                Issue.record("Claude tasks must not open a Codex thread")
+                return true
+            },
+            focus: { _ in
+                Issue.record("An unknown task must not focus another session")
+                return .focused
+            })
+
+        #expect(!opened)
+    }
+
+    @Test
+    @MainActor
+    func `accepted Codex thread navigation reports success without session fallback`() {
+        let opened = AgentTaskFocusResolver.open(
+            provider: .codex,
+            sessionID: "thread",
+            sessions: [],
+            openThread: { true },
+            focus: { _ in
+                Issue.record("Accepted thread navigation must not focus another session")
+                return .failed
+            })
+
+        #expect(opened)
+    }
+
+    @Test
+    @MainActor
+    func `failed Codex thread navigation falls back to the exact local session`() {
+        let exact = AgentSession.fixture(id: "thread", provider: .codex, cwd: "/repo")
+        var attemptedThread = false
+        var focused: AgentSession?
+
+        let opened = AgentTaskFocusResolver.open(
+            provider: .codex,
+            sessionID: "thread",
+            sessions: [exact],
+            openThread: {
+                attemptedThread = true
+                return false
+            },
+            focus: { session in
+                focused = session
+                return .activatedApplicationOnly
+            })
+
+        #expect(attemptedThread)
+        #expect(focused == exact)
+        #expect(opened)
+    }
+
     @Test
     @MainActor
     func `unpersisted codex hooks cannot become tasks or thread links`() {

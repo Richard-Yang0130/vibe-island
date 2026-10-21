@@ -35,7 +35,8 @@ final class AgentTaskHookSettingsModel {
         AgentTaskHookInstaller(
             homeDirectory: self.installer.homeDirectory,
             helperURL: self.installer.helperURL,
-            approvalsEnabled: self.settings.agentTaskApprovalsEnabled)
+            approvalsEnabled: self.settings.agentTaskApprovalsEnabled,
+            harnessPluginURL: self.installer.harnessPluginURL)
     }
 
     /// Turning approvals on or off rewrites the `PermissionRequest` handler, so the hooks have to
@@ -71,6 +72,12 @@ final class AgentTaskHookSettingsModel {
             case .needsRepair:
                 self.healthCenter.set(.needsRepair("Hook configuration is incomplete."), for: provider)
             case .installed:
+                if provider == .deepseekHarness, let snapshot = HarnessTaskSnapshotReader.read() {
+                    self.healthCenter.set(
+                        .healthy(lastEventAt: Date(timeIntervalSince1970: snapshot.generatedAt / 1000)),
+                        for: provider)
+                    continue
+                }
                 if case .healthy = self.healthCenter.health(for: provider) { continue }
                 self.healthCenter.set(.installedAwaitingEvent, for: provider)
             }
@@ -139,6 +146,11 @@ final class AgentTaskHookSettingsModel {
         if BinaryLocator.resolveClaudeBinary() != nil {
             providers.append(.claude)
         }
+        if FileManager.default.fileExists(atPath: "/Applications/DeepSeek Harness.app")
+            || FileManager.default.fileExists(atPath: NSHomeDirectory() + "/Applications/DeepSeek Harness.app")
+        {
+            providers.append(.deepseekHarness)
+        }
         return providers
     }
 }
@@ -197,7 +209,7 @@ struct AgentTaskHookSettingsSection: View {
                 } label: {
                     SettingsRowLabel(
                         self.title(for: provider),
-                        subtitle: self.statusText(self.model.health(for: provider)))
+                        subtitle: self.statusText(self.model.health(for: provider), provider: provider))
                 }
             }
 
@@ -221,13 +233,15 @@ struct AgentTaskHookSettingsSection: View {
         switch provider {
         case .codex: "Codex"
         case .claude: "Claude"
+        case .deepseekHarness: "DeepSeek Harness"
         }
     }
 
-    private func statusText(_ health: AgentTaskHookHealth) -> String {
+    private func statusText(_ health: AgentTaskHookHealth, provider: AgentTaskProvider) -> String {
         switch health {
         case .notDetected, .notConfigured: L("agent_task_not_configured")
-        case .installedAwaitingEvent: L("agent_task_waiting_trust")
+        case .installedAwaitingEvent:
+            L(provider == .deepseekHarness ? "agent_task_waiting_event" : "agent_task_waiting_trust")
         case let .healthy(lastEventAt):
             "\(L("agent_task_healthy")) · \(lastEventAt.formatted(date: .abbreviated, time: .shortened))"
         case let .needsRepair(message): "\(L("agent_task_needs_repair")) · \(message)"

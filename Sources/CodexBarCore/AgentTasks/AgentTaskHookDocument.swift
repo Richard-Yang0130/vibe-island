@@ -63,6 +63,7 @@ public enum AgentTaskHookDocument {
         approvalsEnabled: Bool = false)
         throws -> Data
     {
+        guard provider != .deepseekHarness else { throw AgentTaskHookDocumentError.invalidRoot }
         var root = try self.root(from: data)
         var hooks = root["hooks"] as? [String: Any] ?? [:]
         for event in self.events(for: provider) {
@@ -107,7 +108,8 @@ public enum AgentTaskHookDocument {
     /// Approval-mode drift is a repair prompt, not a reason to consider the hooks missing: the
     /// telemetry handlers still work, so status lights and quota must keep rendering.
     public static func hasManagedHooks(provider: AgentTaskProvider, data: Data) -> Bool {
-        guard let root = try? self.root(from: data),
+        guard provider != .deepseekHarness,
+              let root = try? self.root(from: data),
               let hooks = root["hooks"] as? [String: Any]
         else { return false }
         return self.events(for: provider).allSatisfy { event in
@@ -123,6 +125,7 @@ public enum AgentTaskHookDocument {
         data: Data,
         approvalsEnabled: Bool = false) -> AgentTaskHookDocumentStatus
     {
+        guard provider != .deepseekHarness else { return .notInstalled }
         guard let root = try? self.root(from: data),
               let hooks = root["hooks"] as? [String: Any]
         else { return .notInstalled }

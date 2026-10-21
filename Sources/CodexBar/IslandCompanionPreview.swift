@@ -40,6 +40,7 @@ private struct IslandCompanionPreviewView: View {
     @State private var physicalNotch = false
     @State private var sceneStartedAt = Date()
     @State private var logs = ["QA ready — no external services or persistent writes"]
+    @State private var approvalCommand = "printf 'Keyboard Squad QA — display only'"
 
     private let scenes: [IslandScene] = [.compact, .overview, .approval, .ask, .done]
     private let names = [
@@ -69,6 +70,11 @@ private struct IslandCompanionPreviewView: View {
                 Text("Real native components · safe fixtures")
                     .foregroundStyle(.secondary)
                     .font(.caption)
+            }
+            if self.scene == .approval {
+                TextField("Approval command (display only)", text: self.$approvalCommand, axis: .vertical)
+                    .lineLimit(1...3)
+                    .textFieldStyle(.roundedBorder)
             }
             ZStack(alignment: .top) {
                 Color(white: 0.12)
@@ -130,7 +136,7 @@ private struct IslandCompanionPreviewView: View {
             id: "qa-approval-1",
             provider: .claude,
             toolName: "Bash",
-            toolSummary: "printf 'Keyboard Squad QA — display only'",
+            toolSummary: self.approvalCommand,
             projectPath: "/qa/keyboard-squad",
             actions: [.deny, .allowOnce, .allowAlways, .bypass])
         approval.sessionID = "qa-session-1"

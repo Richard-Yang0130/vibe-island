@@ -25,9 +25,8 @@ private func permissionPayload(
 }
 
 private func socketPath() -> String {
-    // Unix socket paths are length-limited, so keep this short rather than using the long
-    // per-test temporary directory.
-    "/tmp/cbx-approval-test-\(UInt32.random(in: 0..<UInt32.max)).sock"
+    FileManager.default.temporaryDirectory.resolvingSymlinksInPath()
+        .appendingPathComponent("cbx-\(UUID().uuidString.prefix(8))").appendingPathComponent("a.sock").path
 }
 
 struct AgentTaskApprovalDecisionMappingTests {
@@ -222,7 +221,10 @@ struct AgentTaskApprovalTransportTests {
             return .denied(message: "Denied from CodexBar")
         }
         try await server.start()
-        defer { server.stop() }
+        defer {
+            server.stop()
+            try? FileManager.default.removeItem(atPath: (path as NSString).deletingLastPathComponent)
+        }
 
         let output = await CodexBarCLI.resolveApproval(
             provider: .claude,
@@ -244,7 +246,10 @@ struct AgentTaskApprovalTransportTests {
         let path = socketPath()
         let server = AgentTaskApprovalServer(path: path) { _ in nil }
         try await server.start()
-        defer { server.stop() }
+        defer {
+            server.stop()
+            try? FileManager.default.removeItem(atPath: (path as NSString).deletingLastPathComponent)
+        }
 
         let output = await CodexBarCLI.resolveApproval(
             provider: .codex,

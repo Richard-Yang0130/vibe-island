@@ -49,12 +49,18 @@ extension CodexBarCLI {
 enum AgentTaskBridgeClient {
     static func send(_ data: Data, _ path: String) async -> Bool {
         #if canImport(Network)
+        do { try AgentTaskSocketSecurity.validateClient(path: path) } catch { return false }
         let connection = NWConnection(to: .unix(path: path), using: .tcp)
         return await withCheckedContinuation { continuation in
             let completion = AgentTaskBridgeSendCompletion(continuation: continuation)
             connection.stateUpdateHandler = { state in
                 switch state {
                 case .ready:
+                    do { try AgentTaskSocketSecurity.validateClient(path: path) } catch {
+                        completion.finish(false)
+                        connection.cancel()
+                        return
+                    }
                     connection.send(
                         content: data,
                         contentContext: .defaultMessage,

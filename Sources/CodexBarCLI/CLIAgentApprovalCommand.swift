@@ -43,7 +43,8 @@ extension CodexBarCLI {
         exchange: @Sendable (Data, String) async -> Data? = AgentTaskApprovalClient.exchange)
         async -> Data?
     {
-        guard !stdin.isEmpty, stdin.count <= AgentTaskApprovalFrame.maximumBodyBytes else { return nil }
+        guard provider != .deepseekHarness,
+              !stdin.isEmpty, stdin.count <= AgentTaskApprovalFrame.maximumBodyBytes else { return nil }
         let request = AgentTaskApprovalRequest(
             provider: provider,
             requestID: AgentTaskApprovalRequest.identity(provider: provider, payload: stdin),
@@ -52,6 +53,7 @@ extension CodexBarCLI {
               let frame = AgentTaskApprovalFrame.encode(body),
               let responseBody = await exchange(frame, AgentTaskApprovalSocketPath.currentUserPath),
               let response = try? JSONDecoder().decode(AgentTaskApprovalResponse.self, from: responseBody),
+              response.schemaVersion == AgentTaskApprovalRequest.currentSchemaVersion,
               response.requestID == request.requestID,
               let decision = response.decision
         else { return nil }
@@ -67,18 +69,28 @@ enum AgentTaskApprovalClient {
     /// agent, or give the user no time to answer.
     static func exchange(_ frame: Data, _ path: String) async -> Data? {
         #if canImport(Network)
+        do { try AgentTaskSocketSecurity.validateClient(path: path) } catch { return nil }
+        guard case let .body(body, _) = AgentTaskApprovalFrame.decode(frame),
+              let request = try? JSONDecoder().decode(AgentTaskApprovalRequest.self, from: body),
+              request.schemaVersion == AgentTaskApprovalRequest.currentSchemaVersion
+        else { return nil }
         let connection = NWConnection(to: .unix(path: path), using: .tcp)
         return await withCheckedContinuation { continuation in
-            let box = AgentTaskApprovalExchange(continuation: continuation, connection: connection)
+            let box = AgentTaskApprovalExchange(
+                continuation: continuation, connection: connection, requestID: request.requestID)
 
             connection.stateUpdateHandler = { state in
                 switch state {
                 case .ready:
+                    do { try AgentTaskSocketSecurity.validateClient(path: path) } catch {
+                        box.finish(nil)
+                        return
+                    }
                     box.markConnected()
                     connection.send(
                         content: frame,
                         contentContext: .defaultMessage,
-                        isComplete: true,
+                        isComplete: false,
                         completion: .contentProcessed { error in
                             if error != nil { box.finish(nil) } else { box.receive() }
                         })
@@ -115,10 +127,12 @@ private final class AgentTaskApprovalExchange: @unchecked Sendable {
     private var connected = false
     private var buffer = Data()
     private let connection: NWConnection
+    private let requestID: String
 
-    init(continuation: CheckedContinuation<Data?, Never>, connection: NWConnection) {
+    init(continuation: CheckedContinuation<Data?, Never>, connection: NWConnection, requestID: String) {
         self.continuation = continuation
         self.connection = connection
+        self.requestID = requestID
     }
 
     func markConnected() {
@@ -147,7 +161,7 @@ private final class AgentTaskApprovalExchange: @unchecked Sendable {
                 self.lock.unlock()
                 switch AgentTaskApprovalFrame.decode(snapshot) {
                 case let .body(body, _):
-                    self.finish(body)
+                    self.acknowledge(body)
                     return
                 case .oversized:
                     self.finish(nil)
@@ -162,6 +176,25 @@ private final class AgentTaskApprovalExchange: @unchecked Sendable {
                 self.receive()
             }
         }
+    }
+
+    private func acknowledge(_ body: Data) {
+        guard let response = try? JSONDecoder().decode(AgentTaskApprovalResponse.self, from: body),
+              response.schemaVersion == AgentTaskApprovalRequest.currentSchemaVersion,
+              response.requestID == self.requestID,
+              let encoded = try? JSONEncoder().encode(AgentTaskApprovalAcknowledgement(requestID: self.requestID)),
+              let frame = AgentTaskApprovalFrame.encode(encoded)
+        else { self.finish(nil); return }
+        DispatchQueue.global(qos: .userInitiated).asyncAfter(
+            deadline: .now() + AgentTaskApprovalTimeouts.deliverySeconds)
+        {
+            self.finish(nil)
+        }
+        self.connection.send(
+            content: frame,
+            contentContext: .defaultMessage,
+            isComplete: true,
+            completion: .contentProcessed { error in self.finish(error == nil ? body : nil) })
     }
 
     func finish(_ value: Data?) {

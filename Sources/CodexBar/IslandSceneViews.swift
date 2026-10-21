@@ -399,20 +399,23 @@ struct IslandApprovalPane: View {
             }
 
             if let summary = self.request.toolSummary {
-                Text(summary)
-                    .font(.custom(IslandShellFont.familyName, size: 10))
-                    .foregroundStyle(Color.islandText1)
-                    .lineLimit(3)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(8)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(
-                        Color(white: 0.05),
-                        in: RoundedRectangle(cornerRadius: IslandLayout.cardRadius))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: IslandLayout.cardRadius)
-                            .strokeBorder(.white.opacity(0.10), lineWidth: 1)
-                    }
+                ScrollView {
+                    Text(summary)
+                        .font(.custom(IslandShellFont.familyName, size: 10))
+                        .foregroundStyle(Color.islandText1)
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .frame(height: 40)
+                .padding(8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(
+                    Color(white: 0.05),
+                    in: RoundedRectangle(cornerRadius: IslandLayout.cardRadius))
+                .overlay {
+                    RoundedRectangle(cornerRadius: IslandLayout.cardRadius)
+                        .strokeBorder(.white.opacity(0.10), lineWidth: 1)
+                }
             }
 
             if let project = self.request.projectPath {
@@ -429,6 +432,44 @@ struct IslandApprovalPane: View {
                         self.onDecide(self.request, action)
                     }
                 }
+            }
+        }
+    }
+}
+
+struct IslandApprovalFailurePane: View {
+    let usage: IslandUsageStrip?
+    let request: IslandApprovalRequest
+    let onOpenSession: (IslandSessionCard) -> Void
+    let onDismiss: () -> Void
+
+    var body: some View {
+        IslandPane(usage: self.usage) {
+            Text(L("island_approval_delivery_failed"))
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(IslandStatusColor.danger.color)
+            Text(self.request.toolName)
+                .font(.system(size: 11))
+                .foregroundStyle(Color.islandText2)
+            Text(L("island_answer_in_terminal"))
+                .font(.system(size: 10.5))
+                .foregroundStyle(Color.islandText3)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 6) {
+                IslandActionButton(title: L("Dismiss"), style: .quiet, action: self.onDismiss)
+                IslandActionButton(title: L("agent_task_open"), style: .prominent) {
+                    guard let sessionID = self.request.sessionID else { return }
+                    self.onOpenSession(IslandSessionCard(
+                        id: self.request.id,
+                        sessionID: sessionID,
+                        provider: self.request.provider,
+                        status: .failed,
+                        title: self.request.toolName,
+                        subtitle: nil,
+                        chips: [],
+                        duration: nil))
+                }
+                .disabled(self.request.sessionID == nil)
             }
         }
     }

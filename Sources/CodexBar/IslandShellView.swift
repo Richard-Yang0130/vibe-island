@@ -63,6 +63,7 @@ struct IslandShellView: View {
     let content: IslandContent
     let reduceMotion: Bool
     let actions: IslandShellActions
+    var failedApproval: IslandApprovalRequest?
 
     private var shape: IslandShellShape {
         IslandShellShape(
@@ -145,7 +146,13 @@ struct IslandShellView: View {
             }
 
             self.layer(scene: .approval, visible: scene == .approval || scene == .ask) {
-                if let approval = self.content.approval, scene == .approval {
+                if let failedApproval = self.failedApproval, scene == .approval {
+                    IslandApprovalFailurePane(
+                        usage: self.content.usage,
+                        request: failedApproval,
+                        onOpenSession: self.actions.openSession,
+                        onDismiss: self.actions.dismiss)
+                } else if let approval = self.content.approval, scene == .approval {
                     // The decidable path: the blocking hook gave us the tool and its input.
                     IslandApprovalPane(
                         content: self.content,

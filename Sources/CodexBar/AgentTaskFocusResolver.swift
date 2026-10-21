@@ -2,6 +2,24 @@ import CodexBarCore
 import Foundation
 
 enum AgentTaskFocusResolver {
+    @MainActor
+    static func open(
+        provider: AgentTaskProvider,
+        sessionID: String,
+        sessions: [AgentSession],
+        openThread: () -> Bool,
+        focus: (AgentSession) -> SessionFocusResult) -> Bool
+    {
+        if provider == .codex || provider == .deepseekHarness, openThread() {
+            return true
+        }
+        guard let sessionProvider = self.sessionProvider(for: provider) else { return false }
+        guard let session = sessions.first(where: {
+            $0.id == sessionID && $0.provider == sessionProvider
+        }) else { return false }
+        return focus(session) != .failed
+    }
+
     static func codexThreadURL(
         provider: AgentTaskProvider,
         sessionID: String,
@@ -15,8 +33,20 @@ enum AgentTaskFocusResolver {
         return components.url
     }
 
+    static func desktopURL(
+        provider: AgentTaskProvider,
+        sessionID: String,
+        threadReader: CodexThreadMetadataReader = CodexThreadMetadataReader()) -> URL?
+    {
+        switch provider {
+        case .deepseekHarness: URL(string: "dsh://open")
+        case .codex: self.codexThreadURL(provider: provider, sessionID: sessionID, threadReader: threadReader)
+        case .claude: nil
+        }
+    }
+
     static func resolve(event: AgentTaskEvent, sessions: [AgentSession]) -> AgentSession? {
-        let provider = self.sessionProvider(for: event.provider)
+        guard let provider = self.sessionProvider(for: event.provider) else { return nil }
         let matchingProvider = sessions.filter { $0.provider == provider }
 
         if let exact = matchingProvider.first(where: { $0.id == event.sessionID }) {
@@ -33,10 +63,11 @@ enum AgentTaskFocusResolver {
         return nil
     }
 
-    private static func sessionProvider(for provider: AgentTaskProvider) -> AgentSession.Provider {
+    static func sessionProvider(for provider: AgentTaskProvider) -> AgentSession.Provider? {
         switch provider {
         case .codex: .codex
         case .claude: .claude
+        case .deepseekHarness: nil
         }
     }
 }

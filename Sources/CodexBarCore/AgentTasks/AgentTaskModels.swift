@@ -3,11 +3,13 @@ import Foundation
 public enum AgentTaskProvider: String, Codable, CaseIterable, Sendable {
     case codex
     case claude
+    case deepseekHarness
 }
 
 public enum AgentTaskEventSource: String, Codable, Sendable {
     case hook
     case codexAppServer
+    case harnessBridge
 }
 
 public enum AgentTaskEventKind: String, Codable, Sendable {
@@ -55,6 +57,7 @@ public struct AgentTaskEvent: Codable, Equatable, Sendable, Identifiable {
     public let transcriptPath: String?
     public let taskTitle: String?
     public let source: AgentTaskEventSource
+    public let sequence: Int?
 
     public init(
         id: String,
@@ -66,7 +69,8 @@ public struct AgentTaskEvent: Codable, Equatable, Sendable, Identifiable {
         projectPath: String?,
         transcriptPath: String?,
         taskTitle: String?,
-        source: AgentTaskEventSource)
+        source: AgentTaskEventSource,
+        sequence: Int? = nil)
     {
         self.id = id
         self.provider = provider
@@ -78,6 +82,7 @@ public struct AgentTaskEvent: Codable, Equatable, Sendable, Identifiable {
         self.transcriptPath = transcriptPath
         self.taskTitle = taskTitle
         self.source = source
+        self.sequence = sequence
     }
 }
 
@@ -87,6 +92,7 @@ public struct AgentTaskSessionState: Equatable, Sendable {
     public var turnID: String?
     public var status: AgentTaskStatus
     public var updatedAt: Date
+    public var turnStartedAt: Date
     public var projectPath: String?
     public var transcriptPath: String?
     public var taskTitle: String?
@@ -99,16 +105,22 @@ public struct AgentTaskSessionState: Equatable, Sendable {
         updatedAt: Date,
         projectPath: String?,
         transcriptPath: String?,
-        taskTitle: String?)
+        taskTitle: String?,
+        turnStartedAt: Date? = nil)
     {
         self.provider = provider
         self.sessionID = sessionID
         self.turnID = turnID
         self.status = status
         self.updatedAt = updatedAt
+        self.turnStartedAt = turnStartedAt ?? updatedAt
         self.projectPath = projectPath
         self.transcriptPath = transcriptPath
         self.taskTitle = taskTitle
+    }
+
+    public func containsCurrentTurn(at date: Date, turnID: String?) -> Bool {
+        date >= self.turnStartedAt && (self.turnID == nil || self.turnID == turnID)
     }
 }
 

@@ -2,10 +2,6 @@ import CodexBarCore
 import Foundation
 import Network
 
-#if canImport(Darwin)
-import Darwin
-#endif
-
 /// Accumulates length-prefixed frames across `NWConnection` reads.
 struct AgentTaskApprovalAccumulator {
     private var buffer = Data()
@@ -37,36 +33,28 @@ final class AgentTaskApprovalServer: @unchecked Sendable {
 
     private let path: String
     private let handler: RequestHandler
+    private let onDelivery: (@MainActor @Sendable (String, Bool) -> Void)?
     private let queue = DispatchQueue(label: "com.steipete.codexbar.agent-approval-server")
     private let lock = NSLock()
     private var listener: NWListener?
     private var readyContinuation: CheckedContinuation<Void, Error>?
-    private var previousUmask: mode_t?
 
     init(
         path: String = AgentTaskApprovalSocketPath.currentUserPath,
+        onDelivery: (@MainActor @Sendable (String, Bool) -> Void)? = nil,
         handler: @escaping RequestHandler)
     {
         self.path = path
         self.handler = handler
+        self.onDelivery = onDelivery
     }
 
     func start() async throws {
-        try? FileManager.default.removeItem(atPath: self.path)
+        try AgentTaskSocketSecurity.prepareServer(path: self.path)
 
         let parameters = NWParameters.tcp
         parameters.requiredLocalEndpoint = .unix(path: self.path)
-        #if canImport(Darwin)
-        self.previousUmask = Darwin.umask(0o077)
-        #endif
-
-        let listener: NWListener
-        do {
-            listener = try NWListener(using: parameters)
-        } catch {
-            self.restoreUmask()
-            throw error
-        }
+        let listener = try NWListener(using: parameters)
         self.listener = listener
         listener.newConnectionHandler = { [weak self] connection in
             guard let self else {
@@ -85,13 +73,14 @@ final class AgentTaskApprovalServer: @unchecked Sendable {
                 guard let self else { return }
                 switch state {
                 case .ready:
-                    self.restoreUmask()
-                    try? FileManager.default.setAttributes(
-                        [.posixPermissions: 0o600],
-                        ofItemAtPath: self.path)
-                    self.finishStart(.success(()))
+                    do {
+                        try AgentTaskSocketSecurity.secureServerSocket(path: self.path)
+                        self.finishStart(.success(()))
+                    } catch {
+                        listener.cancel()
+                        self.finishStart(.failure(error))
+                    }
                 case let .failed(error):
-                    self.restoreUmask()
                     self.finishStart(.failure(error))
                 default:
                     break
@@ -104,8 +93,7 @@ final class AgentTaskApprovalServer: @unchecked Sendable {
     func stop() {
         self.listener?.cancel()
         self.listener = nil
-        self.restoreUmask()
-        try? FileManager.default.removeItem(atPath: self.path)
+        try? AgentTaskSocketSecurity.removeServerSocket(path: self.path)
     }
 
     private func receive(on connection: NWConnection, accumulator original: AgentTaskApprovalAccumulator) {
@@ -136,20 +124,18 @@ final class AgentTaskApprovalServer: @unchecked Sendable {
             return
         }
 
+        let delivery = AgentTaskApprovalDelivery(
+            connection: connection, requestID: request.requestID, onDelivery: self.onDelivery)
         Task { @MainActor [handler] in
             let decision = await handler(request)
             let response = AgentTaskApprovalResponse(requestID: request.requestID, decision: decision)
             guard let encoded = try? JSONEncoder().encode(response),
                   let frame = AgentTaskApprovalFrame.encode(encoded)
             else {
-                connection.cancel()
+                delivery.finish(false)
                 return
             }
-            connection.send(
-                content: frame,
-                contentContext: .defaultMessage,
-                isComplete: true,
-                completion: .contentProcessed { _ in connection.cancel() })
+            delivery.send(frame)
         }
     }
 
@@ -166,16 +152,79 @@ final class AgentTaskApprovalServer: @unchecked Sendable {
             continuation?.resume(throwing: error)
         }
     }
+}
 
-    private func restoreUmask() {
-        #if canImport(Darwin)
-        self.lock.lock()
-        let previousUmask = self.previousUmask
-        self.previousUmask = nil
-        self.lock.unlock()
-        if let previousUmask {
-            Darwin.umask(previousUmask)
+/// A write completion only means buffering succeeded; the helper's ACK confirms receipt.
+private final class AgentTaskApprovalDelivery: @unchecked Sendable {
+    private let connection: NWConnection
+    private let requestID: String
+    private let onDelivery: (@MainActor @Sendable (String, Bool) -> Void)?
+    private let lock = NSLock()
+    private var finished = false
+
+    init(
+        connection: NWConnection,
+        requestID: String,
+        onDelivery: (@MainActor @Sendable (String, Bool) -> Void)?)
+    {
+        self.connection = connection
+        self.requestID = requestID
+        self.onDelivery = onDelivery
+        connection.stateUpdateHandler = { [self] state in
+            switch state {
+            case .failed, .cancelled: self.finish(false)
+            default: break
+            }
         }
-        #endif
+    }
+
+    func send(_ frame: Data) {
+        self.lock.lock()
+        let finished = self.finished
+        self.lock.unlock()
+        guard !finished else { return }
+        DispatchQueue.global(qos: .userInitiated).asyncAfter(
+            deadline: .now() + AgentTaskApprovalTimeouts.deliverySeconds)
+        {
+            self.finish(false)
+        }
+        self.connection.send(
+            content: frame,
+            contentContext: .defaultMessage,
+            isComplete: false,
+            completion: .contentProcessed { error in
+                if error != nil { self.finish(false) } else {
+                    self.receive(accumulator: AgentTaskApprovalAccumulator())
+                }
+            })
+    }
+
+    private func receive(accumulator original: AgentTaskApprovalAccumulator) {
+        self.connection.receive(minimumIncompleteLength: 1, maximumLength: 16 * 1024) { data, _, isComplete, error in
+            guard error == nil else { self.finish(false); return }
+            var accumulator = original
+            if let body = accumulator.append(data) {
+                let acknowledgement = try? JSONDecoder().decode(AgentTaskApprovalAcknowledgement.self, from: body)
+                self.finish(
+                    acknowledgement?.schemaVersion == AgentTaskApprovalAcknowledgement.currentSchemaVersion
+                        && acknowledgement?.requestID == self.requestID)
+            } else if isComplete || !accumulator.shouldContinue {
+                self.finish(false)
+            } else {
+                self.receive(accumulator: accumulator)
+            }
+        }
+    }
+
+    func finish(_ delivered: Bool) {
+        self.lock.lock()
+        guard !self.finished else { self.lock.unlock(); return }
+        self.finished = true
+        self.lock.unlock()
+        self.connection.stateUpdateHandler = nil
+        self.connection.cancel()
+        if let onDelivery {
+            Task { @MainActor [requestID] in onDelivery(requestID, delivered) }
+        }
     }
 }

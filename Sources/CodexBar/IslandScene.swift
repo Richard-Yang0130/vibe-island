@@ -165,10 +165,13 @@ enum IslandScenePolicy {
         pointerInside: Bool,
         keyboardFocus: Bool,
         pinned: Bool,
-        elapsed: Double) -> Bool
+        elapsed: Double,
+        openedByHover: Bool = false) -> Bool
     {
-        guard !pointerInside, !keyboardFocus, !pinned, !hasPendingApproval,
+        guard !pointerInside, !pinned, !hasPendingApproval,
               !scene.demandsAttention else { return false }
+        if openedByHover, scene == .overview || scene == .done { return true }
+        guard !keyboardFocus else { return false }
         switch status {
         case .needsApproval, .failed, .interrupted, .disconnected: return false
         default: return scene != .done || elapsed >= self.completionDwell

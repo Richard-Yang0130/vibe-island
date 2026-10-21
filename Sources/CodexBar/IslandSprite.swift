@@ -14,6 +14,7 @@ enum IslandSprite: String, Equatable, CaseIterable {
     // Identity slot
     case claude
     case codex
+    case deepseekHarness
     // Status slot
     case work0
     case work1
@@ -28,6 +29,7 @@ enum IslandSprite: String, Equatable, CaseIterable {
         switch self {
         case .claude: Self.claudeBitmap
         case .codex: Self.codexBitmap
+        case .deepseekHarness: Self.harnessBitmap
         case .work0: Self.work0Bitmap
         case .work1: Self.work1Bitmap
         case .work2: Self.work2Bitmap
@@ -58,6 +60,17 @@ enum IslandSprite: String, Equatable, CaseIterable {
         ".XXXXXX.",
         ".X.XX.X.",
         "X.X..X.X",
+    ]
+
+    private static let harnessBitmap = [
+        "........",
+        ".....X..",
+        "..XXXX..",
+        ".XXXXXX.",
+        "XX.XXXXX",
+        "XXXXXX.X",
+        ".XXXX...",
+        "........",
     ]
 
     private static let work0Bitmap = [
@@ -146,6 +159,7 @@ enum IslandSprite: String, Equatable, CaseIterable {
         switch provider {
         case .claude: .claude
         case .codex: .codex
+        case .deepseekHarness: .deepseekHarness
         }
     }
 

@@ -1354,11 +1354,12 @@
 "Resets" = "Reinicis";
 "Keep panel open" = "Mantén el tauler obert";
 "agent_task_status_title" = "Task status";
-"agent_task_status_subtitle" = "Show precise Codex and Claude task events in the top-center island.";
+"agent_task_status_subtitle" = "Show precise Codex / DeepSeek Harness and Claude task events in the top-center island.";
 "agent_task_configure" = "Configure Task Status";
 "agent_task_remove" = "Remove Task Status";
 "agent_task_not_configured" = "Not configured";
 "agent_task_waiting_trust" = "Waiting for hook trust";
+"agent_task_waiting_event" = "Esperant esdeveniments de tasques";
 "agent_task_healthy" = "Healthy";
 "agent_task_needs_repair" = "Needs repair";
 "agent_task_running" = "Running";
@@ -1383,3 +1384,6 @@
 "agent_task_none" = "No active task";
 "agent_task_quota" = "Quota";
 "agent_task_privacy" = "Task status keeps only local session identity, state, project path, and timestamps. It does not store prompts, commands, or model replies.";
+
+"island_approval_sent" = "Enviat";
+"island_approval_delivery_failed" = "No s’ha pogut lliurar l’aprovació";

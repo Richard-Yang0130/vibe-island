@@ -2,10 +2,6 @@ import CodexBarCore
 import Foundation
 import Network
 
-#if canImport(Darwin)
-import Darwin
-#endif
-
 struct AgentTaskEnvelopeAccumulator {
     static let maximumWireBytes = AgentTaskWireEnvelope.maximumPayloadBytes * 2
 
@@ -40,7 +36,6 @@ final class AgentTaskEventSocketServer: @unchecked Sendable {
     private let lock = NSLock()
     private var listener: NWListener?
     private var readyContinuation: CheckedContinuation<Void, Error>?
-    private var previousUmask: mode_t?
 
     init(
         path: String = AgentTaskSocketPath.currentUserPath,
@@ -51,21 +46,11 @@ final class AgentTaskEventSocketServer: @unchecked Sendable {
     }
 
     func start() async throws {
-        try? FileManager.default.removeItem(atPath: self.path)
+        try AgentTaskSocketSecurity.prepareServer(path: self.path)
 
         let parameters = NWParameters.tcp
         parameters.requiredLocalEndpoint = .unix(path: self.path)
-        #if canImport(Darwin)
-        self.previousUmask = Darwin.umask(0o077)
-        #endif
-
-        let listener: NWListener
-        do {
-            listener = try NWListener(using: parameters)
-        } catch {
-            self.restoreUmask()
-            throw error
-        }
+        let listener = try NWListener(using: parameters)
         self.listener = listener
         listener.newConnectionHandler = { [weak self] connection in
             self?.receive(on: connection)
@@ -79,13 +64,14 @@ final class AgentTaskEventSocketServer: @unchecked Sendable {
                 guard let self else { return }
                 switch state {
                 case .ready:
-                    self.restoreUmask()
-                    try? FileManager.default.setAttributes(
-                        [.posixPermissions: 0o600],
-                        ofItemAtPath: self.path)
-                    self.finishStart(.success(()))
+                    do {
+                        try AgentTaskSocketSecurity.secureServerSocket(path: self.path)
+                        self.finishStart(.success(()))
+                    } catch {
+                        listener.cancel()
+                        self.finishStart(.failure(error))
+                    }
                 case let .failed(error):
-                    self.restoreUmask()
                     self.finishStart(.failure(error))
                 default:
                     break
@@ -98,8 +84,7 @@ final class AgentTaskEventSocketServer: @unchecked Sendable {
     func stop() {
         self.listener?.cancel()
         self.listener = nil
-        self.restoreUmask()
-        try? FileManager.default.removeItem(atPath: self.path)
+        try? AgentTaskSocketSecurity.removeServerSocket(path: self.path)
     }
 
     private func receive(on connection: NWConnection) {
@@ -146,17 +131,5 @@ final class AgentTaskEventSocketServer: @unchecked Sendable {
         case let .failure(error):
             continuation?.resume(throwing: error)
         }
-    }
-
-    private func restoreUmask() {
-        #if canImport(Darwin)
-        self.lock.lock()
-        let previousUmask = self.previousUmask
-        self.previousUmask = nil
-        self.lock.unlock()
-        if let previousUmask {
-            Darwin.umask(previousUmask)
-        }
-        #endif
     }
 }

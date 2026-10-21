@@ -14,11 +14,13 @@ public struct AgentTaskWireEnvelope: Codable, Equatable, Sendable {
     public let schemaVersion: Int
     public let provider: AgentTaskProvider
     public let payload: Data
+    public let eventID: UUID?
 
-    public init(schemaVersion: Int, provider: AgentTaskProvider, payload: Data) {
+    public init(schemaVersion: Int, provider: AgentTaskProvider, payload: Data, eventID: UUID? = UUID()) {
         self.schemaVersion = schemaVersion
         self.provider = provider
         self.payload = payload
+        self.eventID = eventID
     }
 
     public static func acceptsPayload(_ payload: Data) -> Bool {
@@ -28,7 +30,7 @@ public struct AgentTaskWireEnvelope: Codable, Equatable, Sendable {
 
 public enum AgentTaskSocketPath {
     public static func path(uid: UInt32) -> String {
-        "/tmp/codexbar-\(uid)-agent-task.sock"
+        AgentTaskSocketSecurity.path(uid: uid, fileName: "task.sock")
     }
 
     public static var currentUserPath: String {

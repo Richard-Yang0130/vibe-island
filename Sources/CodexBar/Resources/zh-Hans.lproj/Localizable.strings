@@ -1327,11 +1327,12 @@
 "Resets" = "重置";
 "Keep panel open" = "保持面板展开";
 "agent_task_status_title" = "任务状态";
-"agent_task_status_subtitle" = "在顶部居中的灵动岛中显示 Codex 和 Claude 的精确任务事件。";
+"agent_task_status_subtitle" = "在顶部居中的灵动岛中显示 Codex / DeepSeek Harness 和 Claude 的精确任务事件。";
 "agent_task_configure" = "配置任务状态";
 "agent_task_remove" = "移除任务状态";
 "agent_task_not_configured" = "未配置";
 "agent_task_waiting_trust" = "等待信任 Hook";
+"agent_task_waiting_event" = "等待任务事件";
 "agent_task_healthy" = "正常";
 "agent_task_needs_repair" = "需要修复";
 "agent_task_running" = "运行中";
@@ -1356,3 +1357,6 @@
 "agent_task_none" = "没有活动任务";
 "agent_task_quota" = "额度";
 "agent_task_privacy" = "任务状态仅保留本地会话标识、状态、项目路径和时间戳，不会存储提示词、命令或模型回复。";
+
+"island_approval_sent" = "已发送";
+"island_approval_delivery_failed" = "审批未能送达";

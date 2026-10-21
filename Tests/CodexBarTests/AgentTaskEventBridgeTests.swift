@@ -44,13 +44,17 @@ struct AgentTaskEventBridgeTests {
     @Test
     @MainActor
     func `socket forwards exactly one envelope`() async throws {
-        let path = "/tmp/codexbar-agent-task-\(UUID().uuidString).sock"
+        let path = FileManager.default.temporaryDirectory.resolvingSymlinksInPath()
+            .appendingPathComponent("cbx-\(UUID().uuidString.prefix(8))").appendingPathComponent("e.sock").path
         let capture = AgentTaskBridgeEnvelopeCapture()
         let server = AgentTaskEventSocketServer(path: path) { envelope in
             capture.record(envelope)
         }
         try await server.start()
-        defer { server.stop() }
+        defer {
+            server.stop()
+            try? FileManager.default.removeItem(atPath: (path as NSString).deletingLastPathComponent)
+        }
 
         let envelope = AgentTaskWireEnvelope(
             schemaVersion: AgentTaskWireEnvelope.currentSchemaVersion,

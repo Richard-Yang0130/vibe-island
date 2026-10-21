@@ -58,6 +58,10 @@ final class AgentTaskApprovalStore {
     private var timeoutTasks: [String: Task<Void, Never>] = [:]
     @ObservationIgnored
     private var recentDecisions: [String: RecentDecision] = [:]
+    @ObservationIgnored
+    private var deliveries: [String: CheckedContinuation<Bool, Never>] = [:]
+    @ObservationIgnored
+    private var deliveryTimeouts: [String: Task<Void, Never>] = [:]
 
     private struct RecentDecision {
         let decision: AgentTaskApprovalDecision?
@@ -82,7 +86,7 @@ final class AgentTaskApprovalStore {
         timeout: Double = AgentTaskApprovalTimeouts.decisionSeconds)
         async -> AgentTaskApprovalDecision?
     {
-        guard self.isEnabled,
+        guard self.isEnabled, request.provider != .deepseekHarness,
               let payload = AgentTaskApprovalPayload(hookPayload: request.payload)
         else { return nil }
 
@@ -91,17 +95,40 @@ final class AgentTaskApprovalStore {
             return recent.decision
         }
 
-        // A retried or duplicated hook invocation carries the same identity. Attach it to the card
-        // already on screen instead of stacking a second one; both callers get the same answer.
-        if !self.pending.contains(where: { $0.id == request.requestID }) {
-            self.pending.append(AgentTaskPendingApproval(request: request, payload: payload, now: now))
-            self.scheduleTimeout(id: request.requestID, seconds: timeout)
-            self.onChange?()
-        }
-
         return await withCheckedContinuation { continuation in
             self.waiters[request.requestID, default: []].append(continuation)
+            if !self.pending.contains(where: { $0.id == request.requestID }) {
+                self.pending.append(AgentTaskPendingApproval(request: request, payload: payload, now: now))
+                self.scheduleTimeout(id: request.requestID, seconds: timeout)
+                self.onChange?()
+            }
         }
+    }
+
+    func submit(id: String, action: AgentTaskApprovalAction) async -> Bool {
+        guard self.deliveries[id] == nil,
+              let request = self.pending.first(where: { $0.id == id }), request.actions.contains(action)
+        else { return false }
+        return await withCheckedContinuation { continuation in
+            self.deliveries[id] = continuation
+            self.deliveryTimeouts[id] = Task { [weak self] in
+                try? await Task.sleep(for: .seconds(2))
+                guard !Task.isCancelled else { return }
+                self?.finishDelivery(id: id, succeeded: false)
+            }
+            self.resolve(id: id, action: action)
+        }
+    }
+
+    func reportDelivery(id: String, succeeded: Bool) {
+        // A failed duplicate says nothing about other helpers; absence of an ACK has its own deadline.
+        guard succeeded else { return }
+        self.finishDelivery(id: id, succeeded: true)
+    }
+
+    private func finishDelivery(id: String, succeeded: Bool) {
+        self.deliveryTimeouts.removeValue(forKey: id)?.cancel()
+        self.deliveries.removeValue(forKey: id)?.resume(returning: succeeded)
     }
 
     /// The user pressed a button on the island.
@@ -125,6 +152,9 @@ final class AgentTaskApprovalStore {
     func drain() {
         for request in self.pending {
             self.finish(id: request.id, decision: nil)
+        }
+        for id in Array(self.deliveries.keys) {
+            self.finishDelivery(id: id, succeeded: false)
         }
     }
 

@@ -77,7 +77,8 @@ final class AgentSessionsStore {
     /// Adaptive refresh uses local metadata only after explicit consent. Remote sessions remain
     /// behind the Agent Sessions setting because they can involve Tailscale discovery and SSH.
     var localMonitoringEnabled: Bool {
-        self.settings.agentSessionsEnabled || self.settings.adaptiveActivityScanningEnabled
+        self.settings.agentSessionsEnabled || self.settings.agentTaskStatusEnabled
+            || self.settings.adaptiveActivityScanningEnabled
     }
 
     nonisolated static func latestActivityAt(in sessions: [AgentSession]) -> Date? {
@@ -86,11 +87,12 @@ final class AgentSessionsStore {
 
     nonisolated static func shouldScanLocally(
         agentSessionsEnabled: Bool,
+        agentTaskStatusEnabled: Bool,
         adaptiveActivityScanningEnabled: Bool,
         lowPowerModeEnabled: Bool,
         thermalState: ProcessInfo.ThermalState) -> Bool
     {
-        if agentSessionsEnabled {
+        if agentSessionsEnabled || agentTaskStatusEnabled {
             return true
         }
         guard adaptiveActivityScanningEnabled, !lowPowerModeEnabled else { return false }
@@ -124,10 +126,11 @@ final class AgentSessionsStore {
         if remoteConfigurationChanged {
             self.remoteRefreshGate.settingsDidChange()
         }
-        if !self.settings.agentSessionsEnabled {
-            // Adaptive keeps only the timestamp signal. Retained session paths and identities
-            // remain scoped to the explicitly enabled Agent Sessions UI.
+        if !self.settings.agentSessionsEnabled, !self.settings.agentTaskStatusEnabled {
+            // Adaptive keeps only the timestamp signal; sessions and task focus need the details.
             self.localSessions = []
+        }
+        if !self.settings.agentSessionsEnabled {
             self.remoteHosts = []
         }
         guard self.localMonitoringEnabled else {
@@ -169,6 +172,7 @@ final class AgentSessionsStore {
         let processInfo = ProcessInfo.processInfo
         guard Self.shouldScanLocally(
             agentSessionsEnabled: self.settings.agentSessionsEnabled,
+            agentTaskStatusEnabled: self.settings.agentTaskStatusEnabled,
             adaptiveActivityScanningEnabled: self.settings.adaptiveActivityScanningEnabled,
             lowPowerModeEnabled: processInfo.isLowPowerModeEnabled,
             thermalState: processInfo.thermalState)
@@ -182,7 +186,7 @@ final class AgentSessionsStore {
 
     func applyLocalScanResult(_ sessions: [AgentSession], updatedAt: Date = Date()) {
         self.latestLocalActivityAt = Self.latestActivityAt(in: sessions)
-        self.localSessions = self.settings.agentSessionsEnabled ? sessions : []
+        self.localSessions = self.settings.agentSessionsEnabled || self.settings.agentTaskStatusEnabled ? sessions : []
         self.lastUpdatedAt = updatedAt
         self.onUpdate?()
     }

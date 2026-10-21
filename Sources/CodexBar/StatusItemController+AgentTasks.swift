@@ -38,13 +38,32 @@ extension StatusItemController {
         self.synchronizeAgentTaskApprovalsForSettingsChange()
         guard self.settings.agentTaskStatusEnabled != self.lastAgentTaskStatusEnabled else { return }
         self.lastAgentTaskStatusEnabled = self.settings.agentTaskStatusEnabled
+        self.agentSessions.settingsDidChange(remoteConfigurationChanged: false)
         if self.settings.agentTaskStatusEnabled {
+            self.configureHarnessTaskBridgeIfAvailable()
             self.startAgentTaskEventServer()
-            if !SettingsStore.isRunningTests { self.agentTaskStatus.startRunningTaskRecovery() }
+            if !SettingsStore.isRunningTests {
+                self.agentTaskStatus.startRunningTaskRecovery(readHarness: { HarnessTaskSnapshotReader.read() })
+            }
         } else {
             self.agentTaskStatus.stopCompletionMonitoring()
             self.agentTaskEventServer?.stop()
             self.agentTaskEventServer = nil
+        }
+    }
+
+    private func configureHarnessTaskBridgeIfAvailable() {
+        guard !SettingsStore.isRunningTests,
+              FileManager.default.fileExists(atPath: "/Applications/DeepSeek Harness.app")
+              || FileManager.default.fileExists(atPath: NSHomeDirectory() + "/Applications/DeepSeek Harness.app")
+        else { return }
+        let installer = AgentTaskHookInstaller()
+        guard installer.inspect(.deepseekHarness).document != .installed else { return }
+        do {
+            try installer.install(.deepseekHarness)
+            AgentTaskHookHealthCenter.shared.set(.installedAwaitingEvent, for: .deepseekHarness)
+        } catch {
+            AgentTaskHookHealthCenter.shared.set(.needsRepair(error.localizedDescription), for: .deepseekHarness)
         }
     }
 
@@ -72,10 +91,14 @@ extension StatusItemController {
         self.agentTaskApprovals.onChange = { [weak self] in
             self?.notchSurfaces?.refreshAll()
         }
-        let server = AgentTaskApprovalServer { [weak self] request in
-            guard let self else { return nil }
-            return await self.agentTaskApprovals.handle(request)
-        }
+        let server = AgentTaskApprovalServer(
+            onDelivery: { [weak self] id, succeeded in
+                self?.agentTaskApprovals.reportDelivery(id: id, succeeded: succeeded)
+            },
+            handler: { [weak self] request in
+                guard let self else { return nil }
+                return await self.agentTaskApprovals.handle(request)
+            })
         self.agentTaskApprovalServer = server
         Task { [weak self, weak server] in
             do {
@@ -90,7 +113,7 @@ extension StatusItemController {
 
     func openAgentTask(_ attention: AgentTaskAttention) {
         let event = attention.event
-        if let url = AgentTaskFocusResolver.codexThreadURL(
+        if let url = AgentTaskFocusResolver.desktopURL(
             provider: event.provider,
             sessionID: event.sessionID),
             NSWorkspace.shared.open(url)
@@ -105,10 +128,11 @@ extension StatusItemController {
             return
         }
 
+        guard let provider = AgentTaskFocusResolver.sessionProvider(for: event.provider) else { return }
         _ = SessionWindowFocuser.focus(
             AgentSession(
                 id: event.sessionID,
-                provider: event.provider == .codex ? .codex : .claude,
+                provider: provider,
                 source: .desktopApp,
                 state: .active,
                 pid: nil,
@@ -127,29 +151,29 @@ extension StatusItemController {
             self.agentTaskStatus.dismissCurrentAttention()
             return
         }
-        guard let state = self.currentAgentTaskSession(),
-              AgentTaskFocusResolver.codexThreadURL(
-                  provider: state.provider,
-                  sessionID: state.sessionID).map(NSWorkspace.shared.open) != true,
+        guard let state = self.currentAgentTaskSession() else { return }
+        if let url = AgentTaskFocusResolver.desktopURL(provider: state.provider, sessionID: state.sessionID),
+           NSWorkspace.shared.open(url) { return }
+        guard let provider = AgentTaskFocusResolver.sessionProvider(for: state.provider),
               let session = self.agentSessions.localSessions.first(where: { session in
                   session.id == state.sessionID
-                      && session.provider == (state.provider == .codex ? .codex : .claude)
+                      && session.provider == provider
               })
         else { return }
         self.agentSessions.focus(session, remoteHost: nil)
     }
 
-    func openAgentTask(provider: AgentTaskProvider, sessionID: String) {
-        if let url = AgentTaskFocusResolver.codexThreadURL(provider: provider, sessionID: sessionID),
-           NSWorkspace.shared.open(url)
-        {
-            return
-        }
-        let sessionProvider: AgentSession.Provider = provider == .codex ? .codex : .claude
-        guard let session = self.agentSessions.localSessions.first(where: {
-            $0.id == sessionID && $0.provider == sessionProvider
-        }) else { return }
-        self.agentSessions.focus(session, remoteHost: nil)
+    func openAgentTask(provider: AgentTaskProvider, sessionID: String) -> Bool {
+        AgentTaskFocusResolver.open(
+            provider: provider,
+            sessionID: sessionID,
+            sessions: self.agentSessions.localSessions,
+            openThread: {
+                guard let url = AgentTaskFocusResolver.desktopURL(provider: provider, sessionID: sessionID)
+                else { return false }
+                return NSWorkspace.shared.open(url)
+            },
+            focus: { SessionWindowFocuser.focus($0) })
     }
 
     func currentAgentTaskSession() -> AgentTaskSessionState? {
@@ -162,7 +186,7 @@ extension StatusItemController {
         })
         else { return nil }
 
-        let sessionProvider: AgentSession.Provider = selected.provider == .codex ? .codex : .claude
+        let sessionProvider = AgentTaskFocusResolver.sessionProvider(for: selected.provider)
         if let live = self.agentSessions.localSessions.first(where: { session in
             session.id == selected.sessionID
                 && session.provider == sessionProvider

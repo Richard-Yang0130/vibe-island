@@ -85,6 +85,8 @@ public enum AgentTaskApprovalCapability {
             hasPermissionSuggestions
                 ? [.deny, .allowOnce, .allowAlways, .bypass]
                 : [.deny, .allowOnce, .bypass]
+        case .deepseekHarness:
+            []
         }
     }
 
@@ -92,6 +94,7 @@ public enum AgentTaskApprovalCapability {
         switch provider {
         case .codex: action == .deny || action == .allowOnce
         case .claude: true
+        case .deepseekHarness: false
         }
     }
 
@@ -137,6 +140,7 @@ public enum AgentTaskApprovalHookOutput {
         provider: AgentTaskProvider)
         -> Data?
     {
+        guard provider != .deepseekHarness else { return nil }
         var body: [String: Any] = ["behavior": decision.behavior.rawValue]
 
         if decision.behavior == .deny, let message = decision.message, !message.isEmpty {
@@ -256,6 +260,18 @@ public struct AgentTaskApprovalResponse: Codable, Equatable, Sendable {
     }
 }
 
+public struct AgentTaskApprovalAcknowledgement: Codable, Equatable, Sendable {
+    public static let currentSchemaVersion = 1
+
+    public let schemaVersion: Int
+    public let requestID: String
+
+    public init(requestID: String) {
+        self.schemaVersion = Self.currentSchemaVersion
+        self.requestID = requestID
+    }
+}
+
 /// Length-prefixed framing: 4-byte big-endian length, then the JSON body.
 ///
 /// The telemetry socket infers message boundaries from the client closing the connection, which
@@ -302,7 +318,7 @@ public enum AgentTaskApprovalFrame {
 
 public enum AgentTaskApprovalSocketPath {
     public static func path(uid: UInt32) -> String {
-        "/tmp/codexbar-\(uid)-agent-approval.sock"
+        AgentTaskSocketSecurity.path(uid: uid, fileName: "approval.sock")
     }
 
     public static var currentUserPath: String {
@@ -323,6 +339,8 @@ public enum AgentTaskApprovalTimeouts {
     public static let connectSeconds: Double = 0.25
     /// How long the island waits for the user.
     public static let decisionSeconds: Double = 60
+    /// The helper must acknowledge a complete reply before the island reports delivery.
+    public static let deliverySeconds: Double = 1
     /// What we write into the hook document. Must exceed `decisionSeconds` so the helper always
     /// exits on its own terms instead of being killed mid-write by the agent.
     public static let hookTimeoutSeconds: Int = 90

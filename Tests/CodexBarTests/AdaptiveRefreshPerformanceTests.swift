@@ -18,15 +18,43 @@ private final class DirectoryEntryVisitCounter: @unchecked Sendable {
 
 private actor AdaptiveLocalScanSpy {
     private(set) var callCount = 0
+    private(set) var includeFileOnlySessionRequests: [Bool] = []
+    private let sessions: [AgentSession]
 
-    func scan(includeFileOnlySessions _: Bool) -> [AgentSession] {
+    init(sessions: [AgentSession] = []) {
+        self.sessions = sessions
+    }
+
+    func scan(includeFileOnlySessions: Bool) -> [AgentSession] {
         self.callCount += 1
-        return []
+        self.includeFileOnlySessionRequests.append(includeFileOnlySessions)
+        return self.sessions
     }
 }
 
 @MainActor
 struct AdaptiveRefreshPerformanceTests {
+    @Test
+    func `task status alone scans live processes and retains their exact session ids`() async {
+        let settings = testSettingsStore(suiteName: "AdaptiveRefreshPerformanceTests-task-focus")
+        settings.agentSessionsEnabled = false
+        settings.agentTaskStatusEnabled = true
+        settings.refreshFrequency = .manual
+        settings.adaptiveActivityScanConsent = .declined
+        let session = AgentSession.fixture(id: "claude-task", provider: .claude, cwd: "/repo")
+        let spy = AdaptiveLocalScanSpy(sessions: [session])
+        let store = AgentSessionsStore(
+            settings: settings,
+            localScan: { includeFileOnlySessions in
+                await spy.scan(includeFileOnlySessions: includeFileOnlySessions)
+            })
+
+        await store.refreshLocal()
+
+        #expect(await spy.includeFileOnlySessionRequests == [false])
+        #expect(store.localSessions == [session])
+    }
+
     @Test
     func `agent aware detection stays within the bounded scan budget`() async throws {
         let fileManager = FileManager.default

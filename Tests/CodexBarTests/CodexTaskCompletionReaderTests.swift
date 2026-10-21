@@ -3,6 +3,27 @@ import Testing
 @testable import CodexBarCore
 
 struct CodexTaskCompletionReaderTests {
+    @Test
+    func `completion is not hidden by a delayed tool hook in the same turn`() throws {
+        try self.withTranscript { url, _ in
+            try self.record("task_complete").write(to: url, atomically: true, encoding: .utf8)
+            var reducer = AgentTaskReducer()
+            reducer.apply(.fixture(
+                kind: .turnStarted,
+                sessionID: "test",
+                turnID: "t1",
+                transcriptPath: url.path))
+            reducer.apply(.fixture(
+                kind: .toolCompleted,
+                sessionID: "test",
+                turnID: "t1",
+                at: Date(timeIntervalSince1970: 102)))
+            let state = try #require(reducer.session(provider: .codex, sessionID: "test"))
+
+            #expect(CodexTaskCompletionReader.read(for: state)?.kind == .turnCompleted)
+        }
+    }
+
     @Test(arguments: ["task_complete", "turn_aborted", "failure"])
     func `reads terminal lifecycle records`(type: String) throws {
         try self.withTranscript { url, state in
@@ -26,7 +47,7 @@ struct CodexTaskCompletionReaderTests {
             current.turnID = "other"
             #expect(CodexTaskCompletionReader.read(for: current) == nil)
             current.turnID = nil
-            current.updatedAt = Date(timeIntervalSince1970: 102)
+            current.turnStartedAt = Date(timeIntervalSince1970: 102)
             #expect(CodexTaskCompletionReader.read(for: current) == nil)
             try (complete + self.record("task_started")).write(to: url, atomically: true, encoding: .utf8)
             #expect(CodexTaskCompletionReader.read(for: state) == nil)
