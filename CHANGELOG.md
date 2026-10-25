@@ -12,6 +12,8 @@
 - Harness plugin installation preserves existing profile settings, uses content-versioned files to avoid stale CommonJS imports, and writes canonical macOS socket paths.
 
 ### Fixed
+- Harness: dismiss failed task cards after five seconds, including queued reminders, without reviving them from snapshot replay.
+- Harness: preserve unrelated profile operations when the desktop app moves managed-block comments while saving YAML.
 - Island: clear completed and interrupted task records independently, including queued reminders, while preserving unrelated running tasks.
 - Task events: deduplicate retransmissions without suppressing later turns, and reject late events from an earlier turn.
 - Transport: validate private, user-owned socket endpoints and refuse unsafe socket paths and permissions.

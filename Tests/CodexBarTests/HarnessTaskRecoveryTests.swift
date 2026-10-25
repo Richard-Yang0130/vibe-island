@@ -4,9 +4,99 @@ import Testing
 @testable import CodexBarCore
 
 struct HarnessTaskRecoveryTests {
-    private func envelope(_ hook: String, seq: Int, time: Int = 100) throws -> AgentTaskWireEnvelope {
+    @Test
+    func `Harness failure expires without dismissing approvals or changing other providers`() {
+        #expect(NotchAttentionPolicy.dismissAfter(status: .failed, provider: .deepseekHarness) == 5)
+        #expect(NotchAttentionPolicy.dismissAfter(status: .needsApproval, provider: .deepseekHarness) == nil)
+        #expect(NotchAttentionPolicy.dismissAfter(status: .failed, provider: .codex) == nil)
+        #expect(NotchAttentionPolicy.dismissAfter(status: .failed, provider: .claude) == nil)
+    }
+
+    @Test @MainActor
+    func `failed Harness task expires behind an approval and snapshot replay cannot revive it`() async throws {
+        let start = try self.envelope("UserPromptSubmit", seq: 1)
+        let failure = try self.envelope("StopFailure", seq: 3, time: 105)
+        let store = AgentTaskStatusStore()
+        let waitingStart = try self.envelope("UserPromptSubmit", seq: 1, sessionID: "waiting-harness")
+        let waiting = try self.envelope("PermissionRequest", seq: 2, sessionID: "waiting-harness")
+        let running = try self.envelope("UserPromptSubmit", seq: 1, sessionID: "running-harness")
+        let snapshot = HarnessTaskSnapshot(
+            pid: 99,
+            generatedAt: 105_000,
+            events: [waitingStart, waiting, running, start, failure])
+        store.synchronizeHarness(snapshot: snapshot, now: Date(timeIntervalSince1970: 105))
+        #expect(store.aggregate(for: .deepseekHarness).sessions.first { $0.sessionID == "h1" }?.status == .failed)
+        try await Task.sleep(for: .milliseconds(5300))
+        store.synchronizeHarness(snapshot: snapshot, now: Date(timeIntervalSince1970: 111))
+        #expect(store.aggregate(for: .deepseekHarness).sessions.first { $0.sessionID == "h1" }?.status == .idle)
+        #expect(store.aggregate(for: .deepseekHarness).sessions.first { $0.sessionID == "running-harness" }?
+            .status == .running)
+        #expect(store.pendingAttentionCount == 1)
+        #expect(store.currentAttention?.event.sessionID == "waiting-harness")
+    }
+
+    @Test
+    func `shared insert operation refuses replacement instead of deleting other plugins`() {
+        let input = Data("""
+
+        # BEGIN com.steipete.codexbar.harness.v1
+        - insert:
+          - id: vibe-island-harness-bridge
+            name: "/app/HarnessBridge.cjs"
+          - id: user-plugin
+            name: "/app/user.cjs"
+        # END com.steipete.codexbar.harness.v1
+
+        """.utf8)
+        #expect(throws: AgentTaskHookDocumentError.self) {
+            try HarnessTaskBridgeDocument.install(
+                data: input,
+                pluginPath: "/app/new.cjs",
+                socketPath: "/private/task.sock",
+                statePath: "/private/state.json")
+        }
+    }
+
+    @Test
+    func `reformatted managed block cannot remove unrelated profile operations`() throws {
+        let input = """
+        # my settings
+
+        # BEGIN com.steipete.codexbar.harness.v1
+        - insert:
+          - id: vibe-island-harness-bridge
+            name: "/app/HarnessBridge.cjs"
+            config:
+              socketPath: "/private/task.sock"
+              statePath: "/private/state.json"
+        - id: user-provider
+          name: custom-provider
+          config:
+            keep: true
+        # END com.steipete.codexbar.harness.v1
+
+        """
+        let removed = try HarnessTaskBridgeDocument.remove(data: Data(input.utf8))
+        let text = try #require(String(data: removed, encoding: .utf8))
+        #expect(text.contains("- id: user-provider\n  name: custom-provider\n  config:\n    keep: true\n"))
+        #expect(text.hasPrefix("# my settings\n"))
+        #expect(!text.contains("vibe-island-harness-bridge"))
+        let updated = try HarnessTaskBridgeDocument.install(
+            data: Data(input.utf8),
+            pluginPath: "/app/new.cjs",
+            socketPath: "/private/task.sock",
+            statePath: "/private/state.json")
+        #expect(try #require(String(data: updated, encoding: .utf8)).contains("- id: user-provider"))
+    }
+
+    private func envelope(
+        _ hook: String,
+        seq: Int,
+        time: Int = 100,
+        sessionID: String = "h1") throws -> AgentTaskWireEnvelope
+    {
         let payload = try JSONSerialization.data(withJSONObject: [
-            "session_id": "h1", "turn_id": "1", "hook_event_name": hook,
+            "session_id": sessionID, "turn_id": "1", "hook_event_name": hook,
             "harness_event_seq": seq, "harness_event_type": "turn/start",
             "timestamp": ISO8601DateFormatter().string(from: Date(timeIntervalSince1970: TimeInterval(time))),
         ])

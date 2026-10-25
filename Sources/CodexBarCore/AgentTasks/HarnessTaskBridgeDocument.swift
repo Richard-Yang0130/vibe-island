@@ -31,8 +31,21 @@ public enum HarnessTaskBridgeDocument {
         guard let finish = text.range(of: self.end, range: start.upperBound..<text.endIndex),
               text.range(of: self.begin, range: start.upperBound..<text.endIndex) == nil
         else { throw AgentTaskHookDocumentError.invalidRoot }
+        // Harness can move the end comment past unrelated root operations when saving YAML.
+        let body = String(text[start.upperBound..<finish.lowerBound])
+        let nextOperation = body.range(of: "\n- ")
+        let ownedOperation = nextOperation.map { String(body[..<$0.lowerBound]) } ?? body
+        guard ownedOperation.hasPrefix("- insert:\n"),
+              ownedOperation.range(
+                  of: #"(?m)^[ \t]+- id: vibe-island-harness-bridge[ \t]*$"#,
+                  options: .regularExpression) != nil,
+              ownedOperation.components(separatedBy: .newlines).count(where: {
+                  $0.range(of: #"^[ \t]+- "#, options: .regularExpression) != nil
+              }) == 1
+        else { throw AgentTaskHookDocumentError.invalidRoot }
+        let preserved = nextOperation.map { String(body[$0.lowerBound...]) } ?? ""
         var result = text
-        result.removeSubrange(start.lowerBound..<finish.upperBound)
+        result.replaceSubrange(start.lowerBound..<finish.upperBound, with: preserved)
         return Data(result.utf8)
     }
 

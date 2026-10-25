@@ -35,7 +35,7 @@ final class AgentTaskStatusStore {
     private var seenEventIDs = Set<String>()
     private var harnessDisconnectedSessions = Set<String>()
     private var attentionQueue: [AgentTaskAttention] = []
-    @ObservationIgnored private let attentionDismissDelay: (AgentTaskStatus) -> TimeInterval?
+    @ObservationIgnored private let attentionDismissDelay: (AgentTaskAttention) -> TimeInterval?
     @ObservationIgnored private var recoveryTask: Task<Void, Never>?
     @ObservationIgnored private var completionMonitorTask: Task<Void, Never>?
     @ObservationIgnored private var attentionDismissTasks: [String: Task<Void, Never>] = [:]
@@ -44,8 +44,11 @@ final class AgentTaskStatusStore {
     private(set) var lastEventAtByProvider: [AgentTaskProvider: Date] = [:]
     @ObservationIgnored var onChange: (@MainActor () -> Void)?
 
-    init(attentionDismissDelay: @escaping (AgentTaskStatus) -> TimeInterval? = NotchAttentionPolicy.dismissAfter) {
-        self.attentionDismissDelay = attentionDismissDelay
+    init(attentionDismissDelay: ((AgentTaskStatus) -> TimeInterval?)? = nil) {
+        self.attentionDismissDelay = { attention in
+            if let attentionDismissDelay { return attentionDismissDelay(attention.status) }
+            return NotchAttentionPolicy.dismissAfter(status: attention.status, provider: attention.event.provider)
+        }
     }
 
     var pendingAttentionCount: Int {
@@ -163,7 +166,7 @@ final class AgentTaskStatusStore {
     }
 
     private func scheduleDismissal(for attention: AgentTaskAttention) {
-        guard let delay = self.attentionDismissDelay(attention.status) else { return }
+        guard let delay = self.attentionDismissDelay(attention) else { return }
         // A task's completion dwell is independent of which attention is currently presented.
         self.attentionDismissTasks[attention.id] = Task { [weak self] in
             try? await Task.sleep(for: .seconds(delay))

@@ -98,6 +98,11 @@ struct NotchTaskDetailPlan {
 }
 
 enum NotchAttentionPolicy {
+    static func dismissAfter(status: AgentTaskStatus, provider: AgentTaskProvider) -> TimeInterval? {
+        if provider == .deepseekHarness, status == .failed { return 5 }
+        return self.dismissAfter(status: status)
+    }
+
     static func dismissAfter(status: AgentTaskStatus) -> TimeInterval? {
         switch status {
         case .completed, .interrupted: 5

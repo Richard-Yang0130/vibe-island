@@ -17,6 +17,8 @@ Vibe Island 是一个 macOS 原生应用，把 **Codex、Claude Code 和 DeepSee
 
 最新源码已接入 **DeepSeek Harness 桌面端**：任务状态、完成提醒、启动和断连恢复均可使用。启用任务状态后会自动配置本地插件；审批继续在 Harness 中处理。详见 [更新日志](CHANGELOG.md) 和 [Harness 接入说明](Scripts/deepseek-harness/README.md)。
 
+Harness 的完成、失败和中断提醒会在 5 秒后从灵动岛移除，待审批任务继续保留；已清理的失败卡片不会因旧快照回放再次出现。
+
 ## 产品界面
 
 以下为 Retina 原生高清截图，点击图片可查看原图。
