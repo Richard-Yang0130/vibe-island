@@ -12,6 +12,8 @@
 - Harness plugin installation preserves existing profile settings, uses content-versioned files to avoid stale CommonJS imports, and writes canonical macOS socket paths.
 
 ### Fixed
+- Codex: automatically retire stale running or approval cards after repeated complete local checks find no rollout writer and no task or log changes for at least 15 seconds. Keep silent live tasks, and restart confirmation after new activity or an unavailable scan.
+- Task events: reject delayed approval hooks without a turn ID after a terminal state, preventing retired cards from reappearing while allowing approvals for a new turn.
 - Harness: dismiss failed task cards after five seconds, including queued reminders, without reviving them from snapshot replay.
 - Harness: preserve unrelated profile operations when the desktop app moves managed-block comments while saving YAML.
 - Island: clear completed and interrupted task records independently, including queued reminders, while preserving unrelated running tasks.
@@ -20,6 +22,9 @@
 - Approvals: confirm delivery only after the helper acknowledges receipt; keep a recovery action available when delivery fails.
 - Task navigation: retain the focus index when the Agent Sessions menu is disabled, and keep full command summaries scrollable in approval views.
 - Harness: restore running tasks after repeated disconnects and after dismissing a disconnect reminder; refuse to overwrite an unreadable profile file.
+
+### Internal
+- Task lifecycle: add regression coverage for missing terminal events, silent running and approval turns, incomplete runtime scans, changed logs, stale snapshots, and delayed hooks. Local validation passed 51 focused tests, all 67 full-suite groups (795 selections, no retries or timeouts), and `make check`.
 
 ## 0.46.0 — 2026-07-29
 

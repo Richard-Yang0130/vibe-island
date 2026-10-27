@@ -56,7 +56,9 @@ struct AgentTaskStatusStoreTests {
     @Test
     func `recovery restores an existing running task without a hook`() async throws {
         let store = AgentTaskStatusStore()
-        store.startRunningTaskRecovery { [.fixture(kind: .turnStarted, sessionID: "existing", turnID: "turn")] }
+        store.startRunningTaskRecovery(
+            read: { [.fixture(kind: .turnStarted, sessionID: "existing", turnID: "turn")] },
+            readRuntime: { nil })
         defer { store.stopCompletionMonitoring() }
         for _ in 0..<50 {
             if !store.aggregate(for: .codex).sessions.isEmpty { break }

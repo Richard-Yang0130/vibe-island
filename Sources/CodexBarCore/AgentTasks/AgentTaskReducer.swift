@@ -51,7 +51,7 @@ public struct AgentTaskReducer: Sendable {
         }
 
         // Async hooks can arrive after Stop, and Codex hooks do not always include a turn ID.
-        if event.kind == .toolCompleted,
+        if event.kind == .toolCompleted || event.kind == .approvalRequested,
            let existing = self.sessions[sessionKey],
            self.terminalSessions.contains(sessionKey),
            event.turnID == nil || event.turnID == existing.turnID

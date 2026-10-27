@@ -31,10 +31,18 @@ struct AgentTaskAttention: Equatable, Identifiable, Sendable {
 @MainActor
 @Observable
 final class AgentTaskStatusStore {
+    private struct CodexOrphanObservation {
+        let state: AgentTaskSessionState
+        let size: UInt64
+        let modifiedAt: Date
+        let firstCheckedAt: Date
+    }
+
     private var reducer = AgentTaskReducer()
     private var seenEventIDs = Set<String>()
     private var harnessDisconnectedSessions = Set<String>()
     private var attentionQueue: [AgentTaskAttention] = []
+    private var codexOrphanObservations: [String: CodexOrphanObservation] = [:]
     @ObservationIgnored private let attentionDismissDelay: (AgentTaskAttention) -> TimeInterval?
     @ObservationIgnored private var recoveryTask: Task<Void, Never>?
     @ObservationIgnored private var completionMonitorTask: Task<Void, Never>?
@@ -70,7 +78,9 @@ final class AgentTaskStatusStore {
 
     func startRunningTaskRecovery(
         read: @escaping @Sendable () -> [AgentTaskEvent] = { CodexThreadMetadataReader().runningTaskEvents() },
-        readHarness: @escaping @Sendable () -> HarnessTaskSnapshot? = { nil })
+        readHarness: @escaping @Sendable () -> HarnessTaskSnapshot? = { nil },
+        readRuntime: @escaping @Sendable () async
+            -> CodexTaskRuntimeSnapshot? = { await CodexTaskRuntimeReader.read() })
     {
         guard self.recoveryTask == nil else { return }
         self.recoveryTask = Task { [weak self] in
@@ -79,6 +89,11 @@ final class AgentTaskStatusStore {
                 guard !Task.isCancelled else { return }
                 for event in events {
                     self?.receive(event)
+                }
+                if self?.codexSessionsAwaitingCompletion.isEmpty == false {
+                    let runtime = await Task.detached(priority: .utility, operation: readRuntime).value
+                    guard !Task.isCancelled else { return }
+                    self?.synchronizeCodexRuntime(snapshot: runtime)
                 }
                 let harness = await Task.detached(priority: .utility, operation: readHarness).value
                 guard !Task.isCancelled else { return }
@@ -123,6 +138,58 @@ final class AgentTaskStatusStore {
         self.recoveryTask = nil
         self.completionMonitorTask?.cancel()
         self.completionMonitorTask = nil
+        self.codexOrphanObservations.removeAll()
+    }
+
+    func synchronizeCodexRuntime(snapshot: CodexTaskRuntimeSnapshot?) {
+        guard let snapshot else {
+            self.codexOrphanObservations.removeAll()
+            return
+        }
+        var observations: [String: CodexOrphanObservation] = [:]
+        var changed = false
+        for state in self.codexSessionsAwaitingCompletion {
+            guard let path = state.transcriptPath,
+                  state.updatedAt <= snapshot.checkedAt,
+                  !snapshot.writableRolloutPaths.contains(URL(fileURLWithPath: path).resolvingSymlinksInPath().path),
+                  CodexRolloutFirstLineParser.read(from: URL(fileURLWithPath: path))?.sessionID == state.sessionID,
+                  let attributes = try? FileManager.default.attributesOfItem(atPath: path),
+                  let size = (attributes[.size] as? NSNumber)?.uint64Value,
+                  let modifiedAt = attributes[.modificationDate] as? Date,
+                  modifiedAt <= snapshot.checkedAt
+            else { continue }
+            let firstCheckedAt: Date = if let previous = self.codexOrphanObservations[state.sessionID],
+                                          previous.state == state, previous.size == size,
+                                          previous.modifiedAt == modifiedAt
+            {
+                previous.firstCheckedAt
+            } else {
+                snapshot.checkedAt
+            }
+            guard snapshot.checkedAt.timeIntervalSince(firstCheckedAt) >= 15 else {
+                observations[state.sessionID] = CodexOrphanObservation(
+                    state: state, size: size, modifiedAt: modifiedAt, firstCheckedAt: firstCheckedAt)
+                continue
+            }
+            // Retain terminal tombstones so delayed hooks/recovery cannot revive the exited turn.
+            let event = AgentTaskEvent(
+                id: "codex:exited:\(state.sessionID):\(state.turnStartedAt.timeIntervalSince1970)",
+                provider: .codex,
+                sessionID: state.sessionID,
+                turnID: state.turnID,
+                kind: .turnInterrupted,
+                occurredAt: snapshot.checkedAt,
+                projectPath: state.projectPath,
+                transcriptPath: path,
+                taskTitle: state.taskTitle,
+                source: .codexAppServer)
+            guard self.reducer.apply(event) else { continue }
+            self.reducer.acknowledgeTerminal(provider: .codex, sessionID: state.sessionID)
+            self.removeAttention { $0.event.provider == .codex && $0.event.sessionID == state.sessionID }
+            changed = true
+        }
+        self.codexOrphanObservations = observations
+        if changed { self.onChange?() }
     }
 
     private var codexSessionsAwaitingCompletion: [AgentTaskSessionState] {

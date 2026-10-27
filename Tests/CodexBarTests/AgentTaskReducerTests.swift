@@ -3,6 +3,42 @@ import Testing
 @testable import CodexBarCore
 
 struct AgentTaskReducerTests {
+    @Test(arguments: [AgentTaskProvider.codex, .claude])
+    func `late approval without a turn id cannot revive a terminal session`(provider: AgentTaskProvider) {
+        var reducer = AgentTaskReducer()
+        reducer.apply(.fixture(kind: .turnStarted, provider: provider, sessionID: "a", turnID: "t1"))
+        reducer.apply(.fixture(
+            kind: .turnCompleted,
+            provider: provider,
+            sessionID: "a",
+            turnID: "t1",
+            at: Date(timeIntervalSince1970: 101)))
+        reducer.acknowledgeTerminal(provider: provider, sessionID: "a")
+        let acceptedLateApproval = reducer.apply(.fixture(
+            kind: .approvalRequested,
+            provider: provider,
+            sessionID: "a",
+            turnID: nil,
+            at: Date(timeIntervalSince1970: 102)))
+        #expect(!acceptedLateApproval)
+        #expect(reducer.session(provider: provider, sessionID: "a")?.status == .idle)
+        let acceptedNewTurn = reducer.apply(.fixture(
+            kind: .turnStarted,
+            provider: provider,
+            sessionID: "a",
+            turnID: nil,
+            at: Date(timeIntervalSince1970: 103)))
+        #expect(acceptedNewTurn)
+        let acceptedNewApproval = reducer.apply(.fixture(
+            kind: .approvalRequested,
+            provider: provider,
+            sessionID: "a",
+            turnID: nil,
+            at: Date(timeIntervalSince1970: 104)))
+        #expect(acceptedNewApproval)
+        #expect(reducer.session(provider: provider, sessionID: "a")?.status == .needsApproval)
+    }
+
     @Test
     func `tool hooks retain the transcript needed to detect completion`() {
         var reducer = AgentTaskReducer()
